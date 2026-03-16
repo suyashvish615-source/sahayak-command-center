@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import SystemPanel from "@/components/SystemPanel";
 import ActionTile from "@/components/ActionTile";
@@ -6,57 +6,179 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { 
-  Clock, 
-  Play, 
-  CheckCircle, 
-  AlertTriangle, 
-  Volume2, 
-  Zap,
-  BookOpen,
-  Users,
-  Timer,
-  Send
+  Clock, Play, CheckCircle, AlertTriangle, Volume2, Zap,
+  BookOpen, Timer, Send, Loader2, Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { 
+  ClassroomSession, InterventionRecord,
+  saveSession, setActiveSession, getActiveSession
+} from "@/lib/sessionStore";
 
 type Mode = "before" | "during" | "after";
 
 const TeacherDashboard = () => {
+  const { toast } = useToast();
   const [activeMode, setActiveMode] = useState<Mode>("before");
-  const [blueprintGenerated, setBlueprintGenerated] = useState(false);
-  const [activeIntervention, setActiveIntervention] = useState<string | null>(null);
+  const [blueprintData, setBlueprintData] = useState<any>(null);
+  const [blueprintLoading, setBlueprintLoading] = useState(false);
+  const [interventionLoading, setInterventionLoading] = useState<string | null>(null);
+  const [interventionData, setInterventionData] = useState<any>(null);
+  const [reflectionLoading, setReflectionLoading] = useState(false);
+  const [reflectionFeedback, setReflectionFeedback] = useState<any>(null);
 
-  // Form states for Before Class
+  // Form states
   const [grade, setGrade] = useState("");
   const [subject, setSubject] = useState("");
   const [topic, setTopic] = useState("");
   const [duration, setDuration] = useState("40");
   const [classType, setClassType] = useState("regular");
 
+  // Session tracking
+  const [currentSession, setCurrentSession] = useState<ClassroomSession | null>(null);
+  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
+  const [elapsedMinutes, setElapsedMinutes] = useState(0);
+
   // Reflection state
   const [reflectionNote, setReflectionNote] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
-  const handleGenerateBlueprint = () => {
-    setBlueprintGenerated(true);
+  // Timer for during class
+  useEffect(() => {
+    if (activeMode === "during" && sessionStartTime) {
+      const interval = setInterval(() => {
+        setElapsedMinutes(Math.floor((Date.now() - sessionStartTime.getTime()) / 60000));
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [activeMode, sessionStartTime]);
+
+  // Restore active session
+  useEffect(() => {
+    const saved = getActiveSession();
+    if (saved) {
+      setCurrentSession(saved);
+      setGrade(saved.grade);
+      setSubject(saved.subject);
+      setTopic(saved.topic);
+      setDuration(saved.duration);
+      setClassType(saved.classType);
+    }
+  }, []);
+
+  const callAI = async (type: string, payload: any) => {
+    const { data, error } = await supabase.functions.invoke("classroom-ai", {
+      body: { type, payload },
+    });
+    if (error) throw new Error(error.message || "AI service error");
+    if (data?.error) throw new Error(data.error);
+    return data.result;
   };
 
-  const handleIntervention = (type: string) => {
-    setActiveIntervention(type);
-    // This would trigger API call
-    setTimeout(() => setActiveIntervention(null), 3000);
+  const handleGenerateBlueprint = async () => {
+    if (!grade || !subject || !topic) {
+      toast({ title: "Missing fields", description: "Please fill in Grade, Subject, and Topic", variant: "destructive" });
+      return;
+    }
+    setBlueprintLoading(true);
+    setBlueprintData(null);
+    try {
+      const result = await callAI("blueprint", { grade, subject, topic, duration, classType });
+      setBlueprintData(result);
+
+      // Create session
+      const session: ClassroomSession = {
+        id: `sess_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        grade, subject, topic, duration, classType,
+        interventions: [],
+        blueprintGenerated: true,
+      };
+      setCurrentSession(session);
+      setActiveSession(session);
+      saveSession(session);
+      toast({ title: "Blueprint Generated", description: "Your classroom blueprint is ready" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setBlueprintLoading(false);
+    }
+  };
+
+  const handleStartClass = () => {
+    setActiveMode("during");
+    setSessionStartTime(new Date());
+    setElapsedMinutes(0);
+    setInterventionData(null);
+  };
+
+  const handleIntervention = async (type: string) => {
+    setInterventionLoading(type);
+    setInterventionData(null);
+    try {
+      const result = await callAI("intervention", {
+        interventionType: type,
+        grade: currentSession?.grade || grade,
+        subject: currentSession?.subject || subject,
+        topic: currentSession?.topic || topic,
+      });
+      setInterventionData({ type, ...result });
+
+      // Record intervention
+      if (currentSession) {
+        const record: InterventionRecord = { type, timestamp: new Date().toISOString(), response: result };
+        const updated = { ...currentSession, interventions: [...currentSession.interventions, record] };
+        setCurrentSession(updated);
+        setActiveSession(updated);
+        saveSession(updated);
+      }
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setInterventionLoading(null);
+    }
+  };
+
+  const handleSubmitReflection = async () => {
+    if (!reflectionNote && selectedTags.length === 0) {
+      toast({ title: "Add reflection", description: "Please add tags or notes", variant: "destructive" });
+      return;
+    }
+    setReflectionLoading(true);
+    try {
+      const result = await callAI("reflection", {
+        tags: selectedTags,
+        note: reflectionNote,
+        sessionSummary: {
+          grade: currentSession?.grade || grade,
+          subject: currentSession?.subject || subject,
+          topic: currentSession?.topic || topic,
+          duration: currentSession?.duration || duration,
+          interventionCount: currentSession?.interventions.length || 0,
+        },
+      });
+      setReflectionFeedback(result);
+
+      if (currentSession) {
+        const updated = { ...currentSession, reflection: { tags: selectedTags, note: reflectionNote, aiFeedback: result } };
+        saveSession(updated);
+        setActiveSession(null);
+      }
+      toast({ title: "Reflection Submitted", description: "AI feedback generated" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setReflectionLoading(false);
+    }
   };
 
   const toggleTag = (tag: string) => {
-    setSelectedTags(prev => 
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-    );
+    setSelectedTags((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
   };
 
-  const reflectionTags = [
-    "Engaged", "Challenging", "Successful", "Needs Review", 
-    "Tech Issues", "Time Constrained", "Great Questions"
-  ];
+  const reflectionTags = ["Engaged", "Challenging", "Successful", "Needs Review", "Tech Issues", "Time Constrained", "Great Questions"];
 
   return (
     <DashboardLayout role="teacher">
@@ -65,17 +187,17 @@ const TeacherDashboard = () => {
         <header className="border-b border-panel-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
           <div className="px-6 h-16 flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <h1 className="font-display text-lg font-semibold text-foreground">
-                Classroom Control
-              </h1>
+              <h1 className="font-display text-lg font-semibold text-foreground">Classroom Control</h1>
               <div className="flex items-center gap-2 px-2.5 py-1 rounded-full border border-panel-border bg-panel-elevated">
                 <span className="status-online" />
-                <span className="text-xs text-muted-foreground">System Ready</span>
+                <span className="text-xs text-muted-foreground">
+                  {currentSession ? `Session: ${currentSession.subject} — ${currentSession.topic}` : "System Ready"}
+                </span>
               </div>
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Timer className="w-4 h-4" />
-              <span>{new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+              <span>{new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
             </div>
           </div>
         </header>
@@ -83,11 +205,11 @@ const TeacherDashboard = () => {
         {/* Mode Switcher */}
         <div className="border-b border-panel-border bg-panel">
           <div className="px-6 py-3 flex gap-2">
-            {[
+            {([
               { id: "before" as Mode, label: "Before Class", icon: Clock },
               { id: "during" as Mode, label: "During Class", icon: Play },
               { id: "after" as Mode, label: "After Class", icon: CheckCircle },
-            ].map((mode) => (
+            ]).map((mode) => (
               <button
                 key={mode.id}
                 onClick={() => setActiveMode(mode.id)}
@@ -107,55 +229,35 @@ const TeacherDashboard = () => {
 
         {/* Content */}
         <div className="p-6">
-          {/* BEFORE CLASS MODE */}
+          {/* BEFORE CLASS */}
           {activeMode === "before" && (
             <div className="grid lg:grid-cols-2 gap-6 animate-fade-in">
-              {/* Planning Form */}
               <SystemPanel title="Session Configuration" subtitle="Define your classroom parameters">
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground uppercase tracking-wide">Grade</Label>
-                      <Input 
-                        placeholder="e.g., 8th" 
-                        value={grade}
-                        onChange={(e) => setGrade(e.target.value)}
-                      />
+                      <Input placeholder="e.g., 8th" value={grade} onChange={(e) => setGrade(e.target.value)} />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground uppercase tracking-wide">Subject</Label>
-                      <Input 
-                        placeholder="e.g., Mathematics" 
-                        value={subject}
-                        onChange={(e) => setSubject(e.target.value)}
-                      />
+                      <Input placeholder="e.g., Mathematics" value={subject} onChange={(e) => setSubject(e.target.value)} />
                     </div>
                   </div>
-                  
                   <div className="space-y-2">
                     <Label className="text-xs text-muted-foreground uppercase tracking-wide">Topic</Label>
-                    <Input 
-                      placeholder="e.g., Linear Equations" 
-                      value={topic}
-                      onChange={(e) => setTopic(e.target.value)}
-                    />
+                    <Input placeholder="e.g., Linear Equations" value={topic} onChange={(e) => setTopic(e.target.value)} />
                   </div>
-
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground uppercase tracking-wide">Duration (min)</Label>
-                      <Input 
-                        type="number" 
-                        value={duration}
-                        onChange={(e) => setDuration(e.target.value)}
-                      />
+                      <Input type="number" value={duration} onChange={(e) => setDuration(e.target.value)} />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground uppercase tracking-wide">Class Type</Label>
-                      <select 
+                      <select
                         className="flex h-10 w-full rounded-md border border-panel-border bg-panel-elevated px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                        value={classType}
-                        onChange={(e) => setClassType(e.target.value)}
+                        value={classType} onChange={(e) => setClassType(e.target.value)}
                       >
                         <option value="regular">Regular</option>
                         <option value="remedial">Remedial</option>
@@ -164,64 +266,55 @@ const TeacherDashboard = () => {
                       </select>
                     </div>
                   </div>
-
                   <div className="pt-4">
-                    <Button 
-                      variant="system" 
-                      className="w-full"
-                      onClick={handleGenerateBlueprint}
-                    >
-                      <BookOpen className="w-4 h-4" />
-                      Generate Classroom Blueprint
+                    <Button variant="system" className="w-full" onClick={handleGenerateBlueprint} disabled={blueprintLoading}>
+                      {blueprintLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</> : <><Sparkles className="w-4 h-4" /> Generate Classroom Blueprint</>}
                     </Button>
                   </div>
                 </div>
               </SystemPanel>
 
-              {/* Blueprint Output */}
-              <SystemPanel 
-                title="Classroom Blueprint" 
-                subtitle={blueprintGenerated ? "System-generated teaching plan" : "Configure session to generate"}
-              >
-                {blueprintGenerated ? (
+              <SystemPanel title="Classroom Blueprint" subtitle={blueprintData ? "AI-generated teaching plan" : "Configure session to generate"}>
+                {blueprintLoading ? (
+                  <div className="h-64 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                    <p className="text-sm">Generating blueprint with Gemini AI...</p>
+                  </div>
+                ) : blueprintData ? (
                   <div className="space-y-4 animate-fade-in">
                     <div className="p-4 rounded-md border border-primary/30 bg-primary/5">
                       <div className="text-xs uppercase tracking-wide text-primary mb-2">Learning Objective</div>
-                      <p className="text-sm text-foreground">
-                        Students will solve linear equations with one variable using balancing method.
-                      </p>
+                      <p className="text-sm text-foreground">{blueprintData.objective}</p>
                     </div>
-                    
-                    <div className="space-y-3">
-                      <div className="flex items-start gap-3 p-3 rounded-md bg-panel-elevated">
-                        <div className="w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center mt-0.5">1</div>
+                    {blueprintData.steps?.map((step: any, idx: number) => (
+                      <div key={idx} className="flex items-start gap-3 p-3 rounded-md bg-panel-elevated">
+                        <div className="w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center mt-0.5">{idx + 1}</div>
                         <div>
-                          <div className="text-sm font-medium text-foreground">Hook (5 min)</div>
-                          <p className="text-xs text-muted-foreground">Real-world problem: Age calculation puzzle</p>
+                          <div className="text-sm font-medium text-foreground">{step.phase} ({step.duration})</div>
+                          <p className="text-xs text-muted-foreground">{step.activity}</p>
                         </div>
                       </div>
-                      <div className="flex items-start gap-3 p-3 rounded-md bg-panel-elevated">
-                        <div className="w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center mt-0.5">2</div>
-                        <div>
-                          <div className="text-sm font-medium text-foreground">Instruction (15 min)</div>
-                          <p className="text-xs text-muted-foreground">Demonstrate balancing with physical manipulatives</p>
+                    ))}
+                    {blueprintData.materials && (
+                      <div className="p-3 rounded-md bg-panel-elevated">
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Materials Needed</div>
+                        <div className="flex flex-wrap gap-2">
+                          {blueprintData.materials.map((m: string, i: number) => (
+                            <span key={i} className="px-2 py-1 text-xs bg-primary/10 text-primary rounded-md">{m}</span>
+                          ))}
                         </div>
                       </div>
-                      <div className="flex items-start gap-3 p-3 rounded-md bg-panel-elevated">
-                        <div className="w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center mt-0.5">3</div>
-                        <div>
-                          <div className="text-sm font-medium text-foreground">Practice (15 min)</div>
-                          <p className="text-xs text-muted-foreground">Paired problem-solving with peer support</p>
-                        </div>
+                    )}
+                    {blueprintData.difficultyAdaptations && (
+                      <div className="p-3 rounded-md bg-panel-elevated space-y-2">
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Adaptations</div>
+                        <p className="text-xs text-muted-foreground"><span className="text-system-warning font-medium">Struggling: </span>{blueprintData.difficultyAdaptations.struggling}</p>
+                        <p className="text-xs text-muted-foreground"><span className="text-primary font-medium">Advanced: </span>{blueprintData.difficultyAdaptations.advanced}</p>
                       </div>
-                      <div className="flex items-start gap-3 p-3 rounded-md bg-panel-elevated">
-                        <div className="w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center mt-0.5">4</div>
-                        <div>
-                          <div className="text-sm font-medium text-foreground">Closure (5 min)</div>
-                          <p className="text-xs text-muted-foreground">Exit ticket: Solve one equation independently</p>
-                        </div>
-                      </div>
-                    </div>
+                    )}
+                    <Button variant="system" className="w-full mt-2" onClick={handleStartClass}>
+                      <Play className="w-4 h-4" /> Start Class Session
+                    </Button>
                   </div>
                 ) : (
                   <div className="h-64 flex items-center justify-center text-muted-foreground">
@@ -232,161 +325,177 @@ const TeacherDashboard = () => {
             </div>
           )}
 
-          {/* DURING CLASS MODE */}
+          {/* DURING CLASS */}
           {activeMode === "during" && (
             <div className="space-y-6 animate-fade-in">
-              <SystemPanel title="Situation Response" subtitle="Select intervention type">
+              <SystemPanel title="Situation Response" subtitle="Select intervention type — AI will provide real-time strategies">
                 <div className="grid md:grid-cols-3 gap-4">
                   <ActionTile
-                    icon={<AlertTriangle className="w-8 h-8" />}
+                    icon={interventionLoading === "confusion" ? <Loader2 className="w-8 h-8 animate-spin" /> : <AlertTriangle className="w-8 h-8" />}
                     title="Confusion Detected"
-                    description="Students struggling to understand current concept. Request alternative explanation."
-                    status={activeIntervention === "confusion" ? "warning" : "idle"}
+                    description="Students struggling to understand current concept. Get AI-powered alternative explanation strategies."
+                    status={interventionLoading === "confusion" ? "warning" : interventionData?.type === "confusion" ? "warning" : "idle"}
                     onClick={() => handleIntervention("confusion")}
                   />
                   <ActionTile
-                    icon={<Volume2 className="w-8 h-8" />}
+                    icon={interventionLoading === "noise" ? <Loader2 className="w-8 h-8 animate-spin" /> : <Volume2 className="w-8 h-8" />}
                     title="Noise / Disruption"
-                    description="Classroom management needed. Request attention-recovery protocol."
-                    status={activeIntervention === "noise" ? "critical" : "idle"}
+                    description="Classroom management needed. Get immediate attention-recovery strategies."
+                    status={interventionLoading === "noise" ? "critical" : interventionData?.type === "noise" ? "critical" : "idle"}
                     onClick={() => handleIntervention("noise")}
                   />
                   <ActionTile
-                    icon={<Zap className="w-8 h-8" />}
+                    icon={interventionLoading === "idle" ? <Loader2 className="w-8 h-8 animate-spin" /> : <Zap className="w-8 h-8" />}
                     title="Fast Finishers Idle"
-                    description="Advanced students completed tasks. Request extension activities."
-                    status={activeIntervention === "idle" ? "active" : "idle"}
+                    description="Advanced students completed tasks. Get extension activities and peer-teaching ideas."
+                    status={interventionLoading === "idle" ? "active" : interventionData?.type === "idle" ? "active" : "idle"}
                     onClick={() => handleIntervention("idle")}
                   />
                 </div>
               </SystemPanel>
 
-              {/* System Response Panel */}
-              {activeIntervention && (
-                <SystemPanel 
-                  title="System Recommendation" 
-                  subtitle="Immediate action guidance"
-                  className="border-primary/30 animate-fade-in"
-                >
-                  <div className="p-4 rounded-md bg-primary/5 border border-primary/20">
-                    {activeIntervention === "confusion" && (
-                      <div className="space-y-3">
-                        <p className="text-sm text-foreground font-medium">Alternative Approach Detected</p>
-                        <ul className="text-sm text-muted-foreground space-y-2">
-                          <li>• Use visual representation: Draw a balance scale on the board</li>
-                          <li>• Reduce complexity: Start with single-step equations</li>
-                          <li>• Pair struggling students with peers who understood</li>
-                        </ul>
+              {interventionData && (
+                <SystemPanel title={interventionData.title || "System Recommendation"} subtitle="AI-generated action guidance" className="border-primary/30 animate-fade-in">
+                  <div className="p-4 rounded-md bg-primary/5 border border-primary/20 space-y-3">
+                    {interventionData.urgency && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs uppercase tracking-wide text-muted-foreground">Urgency:</span>
+                        <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full",
+                          interventionData.urgency === "high" ? "bg-red-500/20 text-red-400" :
+                          interventionData.urgency === "medium" ? "bg-yellow-500/20 text-yellow-400" :
+                          "bg-primary/20 text-primary"
+                        )}>{interventionData.urgency}</span>
                       </div>
                     )}
-                    {activeIntervention === "noise" && (
-                      <div className="space-y-3">
-                        <p className="text-sm text-foreground font-medium">Attention Recovery Protocol</p>
-                        <ul className="text-sm text-muted-foreground space-y-2">
-                          <li>• Silent signal: Raise hand, wait for mimicry</li>
-                          <li>• Quick transition: "In 10 seconds, everyone eyes on me"</li>
-                          <li>• Engagement hook: "Who can tell me one thing they just learned?"</li>
-                        </ul>
-                      </div>
-                    )}
-                    {activeIntervention === "idle" && (
-                      <div className="space-y-3">
-                        <p className="text-sm text-foreground font-medium">Extension Activities</p>
-                        <ul className="text-sm text-muted-foreground space-y-2">
-                          <li>• Challenge: Create word problems for classmates</li>
-                          <li>• Peer teaching: Explain their method to struggling student</li>
-                          <li>• Advanced problem: Multi-step equation with fractions</li>
-                        </ul>
+                    <ul className="text-sm text-muted-foreground space-y-2">
+                      {interventionData.strategies?.map((s: string, i: number) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="text-primary mt-0.5">•</span>
+                          <span>{s}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {interventionData.followUp && (
+                      <div className="pt-3 border-t border-panel-border">
+                        <p className="text-xs text-muted-foreground"><span className="text-primary font-medium">Follow-up: </span>{interventionData.followUp}</p>
                       </div>
                     )}
                   </div>
                 </SystemPanel>
               )}
 
-              {/* Quick Stats */}
               <div className="grid grid-cols-3 gap-4">
                 <SystemPanel>
                   <div className="text-center">
-                    <div className="text-3xl font-display font-bold text-foreground">32</div>
+                    <div className="text-3xl font-display font-bold text-foreground">{elapsedMinutes}</div>
                     <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">Minutes Elapsed</div>
                   </div>
                 </SystemPanel>
                 <SystemPanel>
                   <div className="text-center">
-                    <div className="text-3xl font-display font-bold text-system-success">2</div>
-                    <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">Interventions</div>
+                    <div className="text-3xl font-display font-bold text-system-success">{currentSession?.interventions.length || 0}</div>
+                    <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">Interventions Used</div>
                   </div>
                 </SystemPanel>
                 <SystemPanel>
                   <div className="text-center">
-                    <div className="text-3xl font-display font-bold text-primary">High</div>
-                    <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">Engagement</div>
+                    <div className="text-3xl font-display font-bold text-primary">{currentSession?.subject || "—"}</div>
+                    <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">Current Subject</div>
                   </div>
                 </SystemPanel>
+              </div>
+
+              <div className="flex justify-center">
+                <Button variant="system" onClick={() => setActiveMode("after")}>
+                  <CheckCircle className="w-4 h-4" /> End Class & Reflect
+                </Button>
               </div>
             </div>
           )}
 
-          {/* AFTER CLASS MODE */}
+          {/* AFTER CLASS */}
           {activeMode === "after" && (
             <div className="max-w-2xl mx-auto animate-fade-in">
-              <SystemPanel title="Session Reflection" subtitle="Record insights for continuous improvement">
+              <SystemPanel title="Session Reflection" subtitle="Record insights — AI will analyze and provide feedback">
                 <div className="space-y-5">
                   <div className="space-y-3">
                     <Label className="text-xs text-muted-foreground uppercase tracking-wide">Quick Tags</Label>
                     <div className="flex flex-wrap gap-2">
                       {reflectionTags.map((tag) => (
-                        <button
-                          key={tag}
-                          onClick={() => toggleTag(tag)}
-                          className={cn(
-                            "px-3 py-1.5 rounded-md text-xs font-medium transition-all border",
-                            selectedTags.includes(tag)
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-panel-elevated text-muted-foreground border-panel-border hover:border-primary/50"
-                          )}
-                        >
+                        <button key={tag} onClick={() => toggleTag(tag)} className={cn(
+                          "px-3 py-1.5 rounded-md text-xs font-medium transition-all border",
+                          selectedTags.includes(tag)
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-panel-elevated text-muted-foreground border-panel-border hover:border-primary/50"
+                        )}>
                           {tag}
                         </button>
                       ))}
                     </div>
                   </div>
-
                   <div className="space-y-2">
                     <Label className="text-xs text-muted-foreground uppercase tracking-wide">Reflection Notes</Label>
                     <textarea
                       className="flex min-h-32 w-full rounded-md border border-panel-border bg-panel-elevated px-3 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
                       placeholder="What worked well? What would you do differently? Any student insights?"
-                      value={reflectionNote}
-                      onChange={(e) => setReflectionNote(e.target.value)}
+                      value={reflectionNote} onChange={(e) => setReflectionNote(e.target.value)}
                     />
                   </div>
-
-                  <Button variant="system" className="w-full">
-                    <Send className="w-4 h-4" />
-                    Submit Reflection
+                  <Button variant="system" className="w-full" onClick={handleSubmitReflection} disabled={reflectionLoading}>
+                    {reflectionLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Analyzing...</> : <><Send className="w-4 h-4" /> Submit Reflection</>}
                   </Button>
                 </div>
               </SystemPanel>
 
+              {reflectionFeedback && (
+                <SystemPanel title="AI Feedback" subtitle="Analysis of your session" className="mt-6 border-primary/30 animate-fade-in">
+                  <div className="space-y-4">
+                    <div className="p-3 rounded-md bg-primary/5 border border-primary/20">
+                      <p className="text-sm text-foreground">{reflectionFeedback.summary}</p>
+                    </div>
+                    {reflectionFeedback.strengths?.length > 0 && (
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-system-success mb-2">Strengths</div>
+                        <ul className="space-y-1">{reflectionFeedback.strengths.map((s: string, i: number) => <li key={i} className="text-sm text-muted-foreground flex items-start gap-2"><CheckCircle className="w-3.5 h-3.5 text-system-success mt-0.5 flex-shrink-0" />{s}</li>)}</ul>
+                      </div>
+                    )}
+                    {reflectionFeedback.improvements?.length > 0 && (
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-system-warning mb-2">Areas for Growth</div>
+                        <ul className="space-y-1">{reflectionFeedback.improvements.map((s: string, i: number) => <li key={i} className="text-sm text-muted-foreground flex items-start gap-2"><AlertTriangle className="w-3.5 h-3.5 text-system-warning mt-0.5 flex-shrink-0" />{s}</li>)}</ul>
+                      </div>
+                    )}
+                    {reflectionFeedback.nextSessionTip && (
+                      <div className="p-3 rounded-md bg-panel-elevated">
+                        <div className="text-xs uppercase tracking-wide text-primary mb-1">Next Session Tip</div>
+                        <p className="text-sm text-foreground">{reflectionFeedback.nextSessionTip}</p>
+                      </div>
+                    )}
+                    {reflectionFeedback.encouragement && (
+                      <p className="text-sm text-primary italic">{reflectionFeedback.encouragement}</p>
+                    )}
+                  </div>
+                </SystemPanel>
+              )}
+
               {/* Session Summary */}
-              <SystemPanel title="Session Summary" subtitle="Auto-generated from this session" className="mt-6">
+              <SystemPanel title="Session Summary" subtitle="Data from this session" className="mt-6">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-3 rounded-md bg-panel-elevated">
                     <div className="text-xs text-muted-foreground mb-1">Duration</div>
-                    <div className="text-lg font-display font-semibold text-foreground">40 min</div>
+                    <div className="text-lg font-display font-semibold text-foreground">{currentSession?.duration || duration} min</div>
                   </div>
                   <div className="p-3 rounded-md bg-panel-elevated">
                     <div className="text-xs text-muted-foreground mb-1">Interventions</div>
-                    <div className="text-lg font-display font-semibold text-foreground">2</div>
+                    <div className="text-lg font-display font-semibold text-foreground">{currentSession?.interventions.length || 0}</div>
                   </div>
                   <div className="p-3 rounded-md bg-panel-elevated">
                     <div className="text-xs text-muted-foreground mb-1">Topic</div>
-                    <div className="text-lg font-display font-semibold text-foreground">Linear Eq.</div>
+                    <div className="text-lg font-display font-semibold text-foreground">{currentSession?.topic || topic || "—"}</div>
                   </div>
                   <div className="p-3 rounded-md bg-panel-elevated">
                     <div className="text-xs text-muted-foreground mb-1">Class Type</div>
-                    <div className="text-lg font-display font-semibold text-foreground">Regular</div>
+                    <div className="text-lg font-display font-semibold text-foreground capitalize">{currentSession?.classType || classType}</div>
                   </div>
                 </div>
               </SystemPanel>
