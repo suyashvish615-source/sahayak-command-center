@@ -1,0 +1,4 @@
+project_id = "upwiterdnjotnganwbfx"
+
+[functions.classroom-ai]
+verify_jwt = false
