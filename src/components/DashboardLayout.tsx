@@ -6,7 +6,6 @@ import {
   LayoutDashboard, 
   BookOpen, 
   BarChart3, 
-  Settings,
   ChevronLeft,
   LogOut,
   Menu
