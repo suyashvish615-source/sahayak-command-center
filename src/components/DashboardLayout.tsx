@@ -31,7 +31,6 @@ const DashboardLayout = ({ children, role }: DashboardLayoutProps) => {
         { label: "Dashboard", icon: LayoutDashboard, path: "/dashboard/teacher" },
         { label: "Sessions", icon: BookOpen, path: "/dashboard/teacher/sessions" },
         { label: "Analytics", icon: BarChart3, path: "/dashboard/teacher/analytics" },
-        { label: "Settings", icon: Settings, path: "/dashboard/teacher/settings" },
       ]
     },
     crp: {
@@ -40,7 +39,6 @@ const DashboardLayout = ({ children, role }: DashboardLayoutProps) => {
         { label: "Overview", icon: LayoutDashboard, path: "/dashboard/crp" },
         { label: "Teachers", icon: BookOpen, path: "/dashboard/crp/teachers" },
         { label: "Analytics", icon: BarChart3, path: "/dashboard/crp/analytics" },
-        { label: "Settings", icon: Settings, path: "/dashboard/crp/settings" },
       ]
     },
     admin: {
@@ -49,7 +47,6 @@ const DashboardLayout = ({ children, role }: DashboardLayoutProps) => {
         { label: "System", icon: LayoutDashboard, path: "/dashboard/admin" },
         { label: "Users", icon: BookOpen, path: "/dashboard/admin/users" },
         { label: "Reports", icon: BarChart3, path: "/dashboard/admin/reports" },
-        { label: "Settings", icon: Settings, path: "/dashboard/admin/settings" },
       ]
     }
   };
