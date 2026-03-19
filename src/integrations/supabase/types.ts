@@ -14,7 +14,148 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      classroom_sessions: {
+        Row: {
+          blueprint: Json | null
+          class_type: string
+          created_at: string | null
+          duration: number
+          ended_at: string | null
+          grade: string
+          id: string
+          started_at: string | null
+          status: string
+          subject: string
+          teacher_email: string
+          topic: string
+        }
+        Insert: {
+          blueprint?: Json | null
+          class_type?: string
+          created_at?: string | null
+          duration?: number
+          ended_at?: string | null
+          grade: string
+          id?: string
+          started_at?: string | null
+          status?: string
+          subject: string
+          teacher_email: string
+          topic: string
+        }
+        Update: {
+          blueprint?: Json | null
+          class_type?: string
+          created_at?: string | null
+          duration?: number
+          ended_at?: string | null
+          grade?: string
+          id?: string
+          started_at?: string | null
+          status?: string
+          subject?: string
+          teacher_email?: string
+          topic?: string
+        }
+        Relationships: []
+      }
+      interventions: {
+        Row: {
+          ai_response: Json | null
+          created_at: string | null
+          id: string
+          session_id: string
+          teacher_email: string
+          type: string
+        }
+        Insert: {
+          ai_response?: Json | null
+          created_at?: string | null
+          id?: string
+          session_id: string
+          teacher_email: string
+          type: string
+        }
+        Update: {
+          ai_response?: Json | null
+          created_at?: string | null
+          id?: string
+          session_id?: string
+          teacher_email?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interventions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "classroom_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string | null
+          email: string
+          full_name: string | null
+          id: string
+          role: string
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          full_name?: string | null
+          id?: string
+          role?: string
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          full_name?: string | null
+          id?: string
+          role?: string
+        }
+        Relationships: []
+      }
+      reflections: {
+        Row: {
+          ai_feedback: Json | null
+          created_at: string | null
+          id: string
+          note: string | null
+          session_id: string
+          tags: string[] | null
+          teacher_email: string
+        }
+        Insert: {
+          ai_feedback?: Json | null
+          created_at?: string | null
+          id?: string
+          note?: string | null
+          session_id: string
+          tags?: string[] | null
+          teacher_email: string
+        }
+        Update: {
+          ai_feedback?: Json | null
+          created_at?: string | null
+          id?: string
+          note?: string | null
+          session_id?: string
+          tags?: string[] | null
+          teacher_email?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reflections_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "classroom_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

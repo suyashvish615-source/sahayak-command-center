@@ -40,8 +40,12 @@ const Login = () => {
     // Simulate loading
     await new Promise(resolve => setTimeout(resolve, 1000));
     
+    // Store email for session tracking
+    localStorage.setItem("sahayak_user_email", email);
+
     // Check for CRP credentials
     if (email === FIXED_CREDENTIALS.crp.email && password === FIXED_CREDENTIALS.crp.password) {
+      localStorage.setItem("sahayak_user_role", "crp");
       setSuccess("CRP access granted. Redirecting...");
       setTimeout(() => navigate("/dashboard/crp"), 1000);
       return;
@@ -49,6 +53,7 @@ const Login = () => {
     
     // Check for Admin credentials
     if (email === FIXED_CREDENTIALS.admin.email && password === FIXED_CREDENTIALS.admin.password) {
+      localStorage.setItem("sahayak_user_role", "admin");
       setSuccess("Admin access granted. Redirecting...");
       setTimeout(() => navigate("/dashboard/admin"), 1000);
       return;
@@ -56,6 +61,7 @@ const Login = () => {
     
     // Default to teacher dashboard for any other credentials
     if (email && password) {
+      localStorage.setItem("sahayak_user_role", "teacher");
       setSuccess("Teacher access granted. Redirecting...");
       setTimeout(() => navigate("/dashboard/teacher"), 1000);
       return;
