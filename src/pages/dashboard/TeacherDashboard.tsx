@@ -12,10 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  ClassroomSession, InterventionRecord,
-  saveSession, setActiveSession, getActiveSession
-} from "@/lib/sessionStore";
+import { createSession, updateSession, createIntervention, createReflection, DBSession } from "@/lib/database";
 
 type Mode = "before" | "during" | "after";
 
@@ -37,13 +34,16 @@ const TeacherDashboard = () => {
   const [classType, setClassType] = useState("regular");
 
   // Session tracking
-  const [currentSession, setCurrentSession] = useState<ClassroomSession | null>(null);
+  const [currentSession, setCurrentSession] = useState<DBSession | null>(null);
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
+  const [interventionCount, setInterventionCount] = useState(0);
 
   // Reflection state
   const [reflectionNote, setReflectionNote] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+  const teacherEmail = localStorage.getItem("sahayak_user_email") || "teacher@school.gov.in";
 
   // Timer for during class
   useEffect(() => {
@@ -54,19 +54,6 @@ const TeacherDashboard = () => {
       return () => clearInterval(interval);
     }
   }, [activeMode, sessionStartTime]);
-
-  // Restore active session
-  useEffect(() => {
-    const saved = getActiveSession();
-    if (saved) {
-      setCurrentSession(saved);
-      setGrade(saved.grade);
-      setSubject(saved.subject);
-      setTopic(saved.topic);
-      setDuration(saved.duration);
-      setClassType(saved.classType);
-    }
-  }, []);
 
   const callAI = async (type: string, payload: any) => {
     const { data, error } = await supabase.functions.invoke("classroom-ai", {
@@ -88,17 +75,16 @@ const TeacherDashboard = () => {
       const result = await callAI("blueprint", { grade, subject, topic, duration, classType });
       setBlueprintData(result);
 
-      // Create session
-      const session: ClassroomSession = {
-        id: `sess_${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        grade, subject, topic, duration, classType,
-        interventions: [],
-        blueprintGenerated: true,
-      };
+      // Create session in database
+      const session = await createSession({
+        teacher_email: teacherEmail,
+        grade, subject, topic,
+        duration: parseInt(duration),
+        class_type: classType,
+        blueprint: result,
+      });
       setCurrentSession(session);
-      setActiveSession(session);
-      saveSession(session);
+      setInterventionCount(0);
       toast({ title: "Blueprint Generated", description: "Your classroom blueprint is ready" });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -107,11 +93,20 @@ const TeacherDashboard = () => {
     }
   };
 
-  const handleStartClass = () => {
+  const handleStartClass = async () => {
     setActiveMode("during");
     setSessionStartTime(new Date());
     setElapsedMinutes(0);
     setInterventionData(null);
+
+    if (currentSession) {
+      try {
+        await updateSession(currentSession.id, { status: "active", started_at: new Date().toISOString() } as any);
+        setCurrentSession({ ...currentSession, status: "active", started_at: new Date().toISOString() });
+      } catch (err) {
+        console.error("Failed to update session status", err);
+      }
+    }
   };
 
   const handleIntervention = async (type: string) => {
@@ -126,18 +121,32 @@ const TeacherDashboard = () => {
       });
       setInterventionData({ type, ...result });
 
-      // Record intervention
+      // Save to database
       if (currentSession) {
-        const record: InterventionRecord = { type, timestamp: new Date().toISOString(), response: result };
-        const updated = { ...currentSession, interventions: [...currentSession.interventions, record] };
-        setCurrentSession(updated);
-        setActiveSession(updated);
-        saveSession(updated);
+        await createIntervention({
+          session_id: currentSession.id,
+          teacher_email: teacherEmail,
+          type,
+          ai_response: result,
+        });
+        setInterventionCount(prev => prev + 1);
       }
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
       setInterventionLoading(null);
+    }
+  };
+
+  const handleEndClass = async () => {
+    setActiveMode("after");
+    if (currentSession) {
+      try {
+        await updateSession(currentSession.id, { status: "completed", ended_at: new Date().toISOString() } as any);
+        setCurrentSession({ ...currentSession, status: "completed", ended_at: new Date().toISOString() });
+      } catch (err) {
+        console.error("Failed to update session status", err);
+      }
     }
   };
 
@@ -155,16 +164,21 @@ const TeacherDashboard = () => {
           grade: currentSession?.grade || grade,
           subject: currentSession?.subject || subject,
           topic: currentSession?.topic || topic,
-          duration: currentSession?.duration || duration,
-          interventionCount: currentSession?.interventions.length || 0,
+          duration: currentSession?.duration || parseInt(duration),
+          interventionCount,
         },
       });
       setReflectionFeedback(result);
 
+      // Save to database
       if (currentSession) {
-        const updated = { ...currentSession, reflection: { tags: selectedTags, note: reflectionNote, aiFeedback: result } };
-        saveSession(updated);
-        setActiveSession(null);
+        await createReflection({
+          session_id: currentSession.id,
+          teacher_email: teacherEmail,
+          tags: selectedTags,
+          note: reflectionNote,
+          ai_feedback: result,
+        });
       }
       toast({ title: "Reflection Submitted", description: "AI feedback generated" });
     } catch (err: any) {
@@ -333,21 +347,21 @@ const TeacherDashboard = () => {
                   <ActionTile
                     icon={interventionLoading === "confusion" ? <Loader2 className="w-8 h-8 animate-spin" /> : <AlertTriangle className="w-8 h-8" />}
                     title="Confusion Detected"
-                    description="Students struggling to understand current concept. Get AI-powered alternative explanation strategies."
+                    description="Students struggling to understand current concept."
                     status={interventionLoading === "confusion" ? "warning" : interventionData?.type === "confusion" ? "warning" : "idle"}
                     onClick={() => handleIntervention("confusion")}
                   />
                   <ActionTile
                     icon={interventionLoading === "noise" ? <Loader2 className="w-8 h-8 animate-spin" /> : <Volume2 className="w-8 h-8" />}
                     title="Noise / Disruption"
-                    description="Classroom management needed. Get immediate attention-recovery strategies."
+                    description="Classroom management needed."
                     status={interventionLoading === "noise" ? "critical" : interventionData?.type === "noise" ? "critical" : "idle"}
                     onClick={() => handleIntervention("noise")}
                   />
                   <ActionTile
                     icon={interventionLoading === "idle" ? <Loader2 className="w-8 h-8 animate-spin" /> : <Zap className="w-8 h-8" />}
                     title="Fast Finishers Idle"
-                    description="Advanced students completed tasks. Get extension activities and peer-teaching ideas."
+                    description="Advanced students completed tasks."
                     status={interventionLoading === "idle" ? "active" : interventionData?.type === "idle" ? "active" : "idle"}
                     onClick={() => handleIntervention("idle")}
                   />
@@ -361,8 +375,8 @@ const TeacherDashboard = () => {
                       <div className="flex items-center gap-2">
                         <span className="text-xs uppercase tracking-wide text-muted-foreground">Urgency:</span>
                         <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full",
-                          interventionData.urgency === "high" ? "bg-red-500/20 text-red-400" :
-                          interventionData.urgency === "medium" ? "bg-yellow-500/20 text-yellow-400" :
+                          interventionData.urgency === "high" ? "bg-destructive/20 text-destructive" :
+                          interventionData.urgency === "medium" ? "bg-system-warning/20 text-system-warning" :
                           "bg-primary/20 text-primary"
                         )}>{interventionData.urgency}</span>
                       </div>
@@ -393,7 +407,7 @@ const TeacherDashboard = () => {
                 </SystemPanel>
                 <SystemPanel>
                   <div className="text-center">
-                    <div className="text-3xl font-display font-bold text-system-success">{currentSession?.interventions.length || 0}</div>
+                    <div className="text-3xl font-display font-bold text-system-success">{interventionCount}</div>
                     <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">Interventions Used</div>
                   </div>
                 </SystemPanel>
@@ -406,7 +420,7 @@ const TeacherDashboard = () => {
               </div>
 
               <div className="flex justify-center">
-                <Button variant="system" onClick={() => setActiveMode("after")}>
+                <Button variant="system" onClick={handleEndClass}>
                   <CheckCircle className="w-4 h-4" /> End Class & Reflect
                 </Button>
               </div>
@@ -437,7 +451,7 @@ const TeacherDashboard = () => {
                     <Label className="text-xs text-muted-foreground uppercase tracking-wide">Reflection Notes</Label>
                     <textarea
                       className="flex min-h-32 w-full rounded-md border border-panel-border bg-panel-elevated px-3 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
-                      placeholder="What worked well? What would you do differently? Any student insights?"
+                      placeholder="What worked well? What would you do differently?"
                       value={reflectionNote} onChange={(e) => setReflectionNote(e.target.value)}
                     />
                   </div>
@@ -487,7 +501,7 @@ const TeacherDashboard = () => {
                   </div>
                   <div className="p-3 rounded-md bg-panel-elevated">
                     <div className="text-xs text-muted-foreground mb-1">Interventions</div>
-                    <div className="text-lg font-display font-semibold text-foreground">{currentSession?.interventions.length || 0}</div>
+                    <div className="text-lg font-display font-semibold text-foreground">{interventionCount}</div>
                   </div>
                   <div className="p-3 rounded-md bg-panel-elevated">
                     <div className="text-xs text-muted-foreground mb-1">Topic</div>
@@ -495,7 +509,7 @@ const TeacherDashboard = () => {
                   </div>
                   <div className="p-3 rounded-md bg-panel-elevated">
                     <div className="text-xs text-muted-foreground mb-1">Class Type</div>
-                    <div className="text-lg font-display font-semibold text-foreground capitalize">{currentSession?.classType || classType}</div>
+                    <div className="text-lg font-display font-semibold text-foreground capitalize">{currentSession?.class_type || classType}</div>
                   </div>
                 </div>
               </SystemPanel>

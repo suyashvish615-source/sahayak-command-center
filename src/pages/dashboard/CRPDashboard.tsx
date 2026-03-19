@@ -2,23 +2,30 @@ import { useState, useEffect } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import SystemPanel from "@/components/SystemPanel";
 import { 
-  Users, TrendingUp, Clock, AlertTriangle,
-  CheckCircle, Activity, RefreshCw
+  Users, TrendingUp, AlertTriangle,
+  CheckCircle, Activity, RefreshCw, Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getSessionStats } from "@/lib/sessionStore";
+import { getDashboardStats } from "@/lib/database";
 
 const CRPDashboard = () => {
-  const [stats, setStats] = useState(getSessionStats());
+  const [stats, setStats] = useState<Awaited<ReturnType<typeof getDashboardStats>> | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const refresh = () => setStats(getSessionStats());
+  const refresh = async () => {
+    setLoading(true);
+    try {
+      setStats(await getDashboardStats());
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  useEffect(() => {
-    const interval = setInterval(refresh, 10000);
-    return () => clearInterval(interval);
-  }, []);
+  useEffect(() => { refresh(); }, []);
 
-  const hasData = stats.totalSessions > 0;
+  const hasData = stats && stats.totalSessions > 0;
 
   const getStatusColor = (interventions: number) => {
     if (interventions > 10) return "text-system-warning";
@@ -31,6 +38,16 @@ const CRPDashboard = () => {
     if (interventions < 5) return "Excellent";
     return "Active";
   };
+
+  if (loading && !stats) {
+    return (
+      <DashboardLayout role="crp">
+        <div className="min-h-screen flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout role="crp">
@@ -59,7 +76,7 @@ const CRPDashboard = () => {
                   <Users className="w-6 h-6 text-primary" />
                 </div>
                 <div>
-                  <div className="text-2xl font-display font-bold text-foreground">{stats.totalSessions}</div>
+                  <div className="text-2xl font-display font-bold text-foreground">{stats?.totalSessions || 0}</div>
                   <div className="text-xs text-muted-foreground">Total Sessions</div>
                 </div>
               </div>
@@ -70,7 +87,7 @@ const CRPDashboard = () => {
                   <CheckCircle className="w-6 h-6 text-system-success" />
                 </div>
                 <div>
-                  <div className="text-2xl font-display font-bold text-foreground">{stats.sessionsThisWeek}</div>
+                  <div className="text-2xl font-display font-bold text-foreground">{stats?.sessionsThisWeek || 0}</div>
                   <div className="text-xs text-muted-foreground">Sessions This Week</div>
                 </div>
               </div>
@@ -81,7 +98,7 @@ const CRPDashboard = () => {
                   <AlertTriangle className="w-6 h-6 text-system-warning" />
                 </div>
                 <div>
-                  <div className="text-2xl font-display font-bold text-foreground">{stats.totalInterventions}</div>
+                  <div className="text-2xl font-display font-bold text-foreground">{stats?.totalInterventions || 0}</div>
                   <div className="text-xs text-muted-foreground">Interventions Used</div>
                 </div>
               </div>
@@ -93,7 +110,7 @@ const CRPDashboard = () => {
                 </div>
                 <div>
                   <div className="text-2xl font-display font-bold text-foreground">
-                    {stats.sessionsThisWeek > 0 ? `${stats.interventionBreakdown.confusion}%` : "—"}
+                    {stats && stats.sessionsThisWeek > 0 ? `${stats.interventionBreakdown.confusion}%` : "—"}
                   </div>
                   <div className="text-xs text-muted-foreground">Confusion Rate</div>
                 </div>
@@ -103,36 +120,43 @@ const CRPDashboard = () => {
 
           <div className="grid lg:grid-cols-3 gap-6">
             {/* Session History */}
-            <SystemPanel title="Recent Sessions" subtitle="Real session data from teacher portal" className="lg:col-span-2">
-              {hasData ? (
+            <SystemPanel title="Recent Sessions" subtitle="Real session data from database" className="lg:col-span-2">
+              {hasData && stats ? (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-panel-border">
                         <th className="text-left py-3 px-2 text-xs uppercase tracking-wide text-muted-foreground font-medium">Subject</th>
+                        <th className="text-left py-3 px-2 text-xs uppercase tracking-wide text-muted-foreground font-medium">Teacher</th>
                         <th className="text-center py-3 px-2 text-xs uppercase tracking-wide text-muted-foreground font-medium">Grade</th>
-                        <th className="text-center py-3 px-2 text-xs uppercase tracking-wide text-muted-foreground font-medium">Interventions</th>
-                        <th className="text-right py-3 px-2 text-xs uppercase tracking-wide text-muted-foreground font-medium">Status</th>
+                        <th className="text-center py-3 px-2 text-xs uppercase tracking-wide text-muted-foreground font-medium">Status</th>
+                        <th className="text-right py-3 px-2 text-xs uppercase tracking-wide text-muted-foreground font-medium">Date</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {stats.recentSessions.map((session) => (
-                        <tr key={session.id} className="border-b border-panel-border/50 hover:bg-panel-elevated/50 transition-colors">
-                          <td className="py-3 px-2">
-                            <div>
-                              <span className="text-sm text-foreground">{session.subject}</span>
-                              <p className="text-xs text-muted-foreground">{session.topic}</p>
-                            </div>
-                          </td>
-                          <td className="py-3 px-2 text-center text-sm text-foreground">{session.grade}</td>
-                          <td className="py-3 px-2 text-center text-sm text-foreground">{session.interventions.length}</td>
-                          <td className="py-3 px-2 text-right">
-                            <span className={`text-xs font-medium ${getStatusColor(session.interventions.length)}`}>
-                              {getStatusLabel(session.interventions.length)}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                      {stats.recentSessions.map((session) => {
+                        const sessionInterventions = stats.interventions.filter(i => i.session_id === session.id);
+                        return (
+                          <tr key={session.id} className="border-b border-panel-border/50 hover:bg-panel-elevated/50 transition-colors">
+                            <td className="py-3 px-2">
+                              <div>
+                                <span className="text-sm text-foreground">{session.subject}</span>
+                                <p className="text-xs text-muted-foreground">{session.topic}</p>
+                              </div>
+                            </td>
+                            <td className="py-3 px-2 text-xs text-muted-foreground truncate max-w-[120px]">{session.teacher_email}</td>
+                            <td className="py-3 px-2 text-center text-sm text-foreground">{session.grade}</td>
+                            <td className="py-3 px-2 text-center">
+                              <span className={`text-xs font-medium ${getStatusColor(sessionInterventions.length)}`}>
+                                {getStatusLabel(sessionInterventions.length)}
+                              </span>
+                            </td>
+                            <td className="py-3 px-2 text-right text-xs text-muted-foreground">
+                              {new Date(session.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -147,9 +171,9 @@ const CRPDashboard = () => {
             <SystemPanel title="Intervention Patterns" subtitle="Usage by type">
               <div className="space-y-4">
                 {[
-                  { label: "Confusion", pct: stats.interventionBreakdown.confusion, color: "bg-system-warning" },
-                  { label: "Disruption", pct: stats.interventionBreakdown.noise, color: "bg-system-critical" },
-                  { label: "Fast Finishers", pct: stats.interventionBreakdown.idle, color: "bg-primary" },
+                  { label: "Confusion", pct: stats?.interventionBreakdown.confusion || 0, color: "bg-system-warning" },
+                  { label: "Disruption", pct: stats?.interventionBreakdown.noise || 0, color: "bg-system-critical" },
+                  { label: "Fast Finishers", pct: stats?.interventionBreakdown.idle || 0, color: "bg-primary" },
                 ].map((item) => (
                   <div key={item.label} className="space-y-2">
                     <div className="flex justify-between text-xs">
@@ -167,23 +191,26 @@ const CRPDashboard = () => {
 
           {/* Recent Activity */}
           <SystemPanel title="Recent Activity" subtitle="Latest session events">
-            {hasData ? (
+            {hasData && stats ? (
               <div className="space-y-3">
-                {stats.recentSessions.slice(0, 5).map((session) => (
-                  <div key={session.id} className="flex items-center justify-between p-3 rounded-md bg-panel-elevated">
-                    <div className="flex items-center gap-3">
-                      <Activity className="w-4 h-4 text-primary" />
-                      <div>
-                        <span className="text-sm text-foreground">{session.subject}</span>
-                        <span className="text-sm text-muted-foreground"> — {session.topic}</span>
-                        {session.reflection && <span className="text-xs text-system-success ml-2">(Reflected)</span>}
+                {stats.recentSessions.slice(0, 5).map((session) => {
+                  const ref = stats.reflections.find(r => r.session_id === session.id);
+                  return (
+                    <div key={session.id} className="flex items-center justify-between p-3 rounded-md bg-panel-elevated">
+                      <div className="flex items-center gap-3">
+                        <Activity className="w-4 h-4 text-primary" />
+                        <div>
+                          <span className="text-sm text-foreground">{session.subject}</span>
+                          <span className="text-sm text-muted-foreground"> — {session.topic}</span>
+                          {ref && <span className="text-xs text-system-success ml-2">(Reflected)</span>}
+                        </div>
                       </div>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(session.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </span>
                     </div>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(session.timestamp).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="h-24 flex items-center justify-center text-muted-foreground text-sm">
