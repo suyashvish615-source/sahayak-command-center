@@ -10,7 +10,7 @@ import {
   BookOpen, Timer, Send, Loader2, Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from "@/lib/supabaseExternal";
 import { useToast } from "@/hooks/use-toast";
 import { createSession, updateSession, createIntervention, createReflection, DBSession } from "@/lib/database";
 

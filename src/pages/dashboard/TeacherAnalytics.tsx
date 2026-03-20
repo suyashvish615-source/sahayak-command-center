@@ -3,7 +3,7 @@ import DashboardLayout from "@/components/DashboardLayout";
 import SystemPanel from "@/components/SystemPanel";
 import { BarChart3, TrendingUp, BookOpen, Loader2, AlertTriangle, CheckCircle, Zap } from "lucide-react";
 import { getSessionsByTeacher, DBSession, DBIntervention } from "@/lib/database";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase as supabase } from "@/lib/supabaseExternal";
 import { motion } from "framer-motion";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid } from "recharts";
 
