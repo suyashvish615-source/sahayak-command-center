@@ -10,7 +10,7 @@ import {
   BookOpen, Timer, Send, Loader2, Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase } from "@/lib/supabaseExternal";
 import { useToast } from "@/hooks/use-toast";
 import { createSession, updateSession, createIntervention, createReflection, DBSession } from "@/lib/database";
 
@@ -56,7 +56,7 @@ const TeacherDashboard = () => {
   }, [activeMode, sessionStartTime]);
 
   const callAI = async (type: string, payload: any) => {
-    const { data, error } = await supabase.functions.invoke("classroom-ai", {
+    const { data, error } = await externalSupabase.functions.invoke("classroom-ai", {
       body: { type, payload },
     });
     if (error) throw new Error(error.message || "AI service error");
