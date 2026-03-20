@@ -56,7 +56,7 @@ const TeacherDashboard = () => {
   }, [activeMode, sessionStartTime]);
 
   const callAI = async (type: string, payload: any) => {
-    const { data, error } = await supabase.functions.invoke("classroom-ai", {
+    const { data, error } = await externalSupabase.functions.invoke("classroom-ai", {
       body: { type, payload },
     });
     if (error) throw new Error(error.message || "AI service error");
