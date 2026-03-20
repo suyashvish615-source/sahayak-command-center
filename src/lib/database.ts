@@ -1,6 +1,20 @@
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase as supabase } from "@/lib/supabaseExternal";
 
-// ---- Types ----
+// ── Types ────────────────────────────────────────────────────
+
+export interface DBUser {
+  id: string;
+  email: string;
+  name: string;
+  role: "teacher" | "crp" | "admin";
+  status: "pending" | "approved" | "rejected";
+  school_name: string | null;
+  phone: string | null;
+  created_at: string;
+  approved_at: string | null;
+  approved_by: string | null;
+}
+
 export interface DBSession {
   id: string;
   teacher_email: string;
@@ -35,7 +49,99 @@ export interface DBReflection {
   created_at: string;
 }
 
-// ---- Session CRUD ----
+// ── User / Auth ───────────────────────────────────────────────
+
+export async function registerTeacher(data: {
+  email: string;
+  name: string;
+  password: string;
+  school_name?: string;
+  phone?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const { data: existing } = await supabase
+    .from("users")
+    .select("id, status")
+    .eq("email", data.email)
+    .single();
+
+  if (existing) {
+    if (existing.status === "pending") return { success: false, error: "Your account is already registered and pending approval." };
+    if (existing.status === "rejected") return { success: false, error: "Your registration was rejected. Please contact your admin." };
+    return { success: false, error: "An account with this email already exists." };
+  }
+
+  const { error } = await supabase.from("users").insert({
+    email: data.email,
+    name: data.name,
+    password_hash: data.password,
+    role: "teacher",
+    status: "pending",
+    school_name: data.school_name || null,
+    phone: data.phone || null,
+  });
+
+  if (error) return { success: false, error: error.message };
+  return { success: true };
+}
+
+export async function loginUser(email: string, password: string): Promise<{
+  user: DBUser | null;
+  error?: string;
+}> {
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("email", email)
+    .eq("password_hash", password)
+    .single();
+
+  if (error || !data) return { user: null, error: "Invalid email or password." };
+
+  const user = data as unknown as DBUser;
+
+  if (user.status === "pending") return { user: null, error: "PENDING" };
+  if (user.status === "rejected") return { user: null, error: "REJECTED" };
+
+  return { user };
+}
+
+export async function getAllUsers(): Promise<DBUser[]> {
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data || []) as unknown as DBUser[];
+}
+
+export async function getPendingUsers(): Promise<DBUser[]> {
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data || []) as unknown as DBUser[];
+}
+
+export async function approveUser(userId: string, adminEmail: string): Promise<void> {
+  const { error } = await supabase
+    .from("users")
+    .update({ status: "approved", approved_at: new Date().toISOString(), approved_by: adminEmail })
+    .eq("id", userId);
+  if (error) throw error;
+}
+
+export async function rejectUser(userId: string, adminEmail: string): Promise<void> {
+  const { error } = await supabase
+    .from("users")
+    .update({ status: "rejected", approved_by: adminEmail })
+    .eq("id", userId);
+  if (error) throw error;
+}
+
+// ── Sessions ──────────────────────────────────────────────────
+
 export async function createSession(data: {
   teacher_email: string;
   grade: string;
@@ -92,7 +198,8 @@ export async function getSessionsByTeacher(email: string, limit = 50): Promise<D
   return (data || []) as unknown as DBSession[];
 }
 
-// ---- Interventions ----
+// ── Interventions ─────────────────────────────────────────────
+
 export async function createIntervention(data: {
   session_id: string;
   teacher_email: string;
@@ -133,7 +240,8 @@ export async function getInterventionsBySession(sessionId: string): Promise<DBIn
   return (data || []) as unknown as DBIntervention[];
 }
 
-// ---- Reflections ----
+// ── Reflections ───────────────────────────────────────────────
+
 export async function createReflection(data: {
   session_id: string;
   teacher_email: string;
@@ -166,20 +274,23 @@ export async function getReflections(limit = 50): Promise<DBReflection[]> {
   return (data || []) as unknown as DBReflection[];
 }
 
-// ---- Aggregated Stats ----
+// ── Dashboard Stats ───────────────────────────────────────────
+
 export async function getDashboardStats() {
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const [sessionsRes, interventionsRes, reflectionsRes] = await Promise.all([
+  const [sessionsRes, interventionsRes, reflectionsRes, usersRes] = await Promise.all([
     supabase.from("classroom_sessions").select("*").order("created_at", { ascending: false }),
     supabase.from("interventions").select("*").order("created_at", { ascending: false }),
     supabase.from("reflections").select("*").order("created_at", { ascending: false }),
+    supabase.from("users").select("*").order("created_at", { ascending: false }),
   ]);
 
   const sessions = (sessionsRes.data || []) as unknown as DBSession[];
   const interventions = (interventionsRes.data || []) as unknown as DBIntervention[];
   const reflections = (reflectionsRes.data || []) as unknown as DBReflection[];
+  const users = (usersRes.data || []) as unknown as DBUser[];
 
   const thisWeekSessions = sessions.filter(s => new Date(s.created_at) >= weekAgo);
   const thisWeekInterventions = interventions.filter(i => new Date(i.created_at) >= weekAgo);
@@ -190,8 +301,8 @@ export async function getDashboardStats() {
   });
   const totalTyped = Object.values(typeCounts).reduce((a, b) => a + b, 0) || 1;
 
-  // Unique teachers
-  const teacherEmails = [...new Set(sessions.map(s => s.teacher_email))];
+  const approvedTeachers = users.filter(u => u.role === "teacher" && u.status === "approved");
+  const pendingTeachers = users.filter(u => u.role === "teacher" && u.status === "pending");
 
   return {
     totalSessions: sessions.length,
@@ -199,8 +310,9 @@ export async function getDashboardStats() {
     totalInterventions: interventions.length,
     interventionsThisWeek: thisWeekInterventions.length,
     totalReflections: reflections.length,
-    teacherCount: teacherEmails.length,
-    teacherEmails,
+    teacherCount: approvedTeachers.length,
+    pendingTeacherCount: pendingTeachers.length,
+    teacherEmails: approvedTeachers.map(u => u.email),
     interventionBreakdown: {
       confusion: Math.round((typeCounts.confusion / totalTyped) * 100),
       noise: Math.round((typeCounts.noise / totalTyped) * 100),
@@ -212,5 +324,7 @@ export async function getDashboardStats() {
     sessions,
     interventions,
     reflections,
+    users,
+    pendingTeachers,
   };
 }
