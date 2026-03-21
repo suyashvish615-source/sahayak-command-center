@@ -1,5 +1,31 @@
 import { externalSupabase as supabase } from "@/lib/supabaseExternal";
 
+// ── Auto-seed admin & CRP accounts if missing ───────────────
+async function ensureSeedUsers() {
+  const { data } = await supabase.from("users").select("id").limit(1);
+  if (!data || data.length === 0) {
+    await supabase.from("users").upsert([
+      {
+        email: "suyash.svish06@gmail.com",
+        name: "Admin",
+        password_hash: "SUYASH0903",
+        role: "admin",
+        status: "approved",
+        school_name: "System",
+      },
+      {
+        email: "2403n9p6ccsuyash@viva-technology.org",
+        name: "CRP Mentor",
+        password_hash: "suyash0903",
+        role: "crp",
+        status: "approved",
+        school_name: "VIVA Technology",
+      },
+    ], { onConflict: "email" });
+  }
+}
+ensureSeedUsers().catch(console.error);
+
 // ── Types ────────────────────────────────────────────────────
 
 export interface DBUser {
@@ -62,7 +88,7 @@ export async function registerTeacher(data: {
     .from("users")
     .select("id, status")
     .eq("email", data.email)
-    .single();
+    .maybeSingle();
 
   if (existing) {
     if (existing.status === "pending") return { success: false, error: "Your account is already registered and pending approval." };
@@ -93,7 +119,7 @@ export async function loginUser(email: string, password: string): Promise<{
     .select("*")
     .eq("email", email)
     .eq("password_hash", password)
-    .single();
+    .maybeSingle();
 
   if (error || !data) return { user: null, error: "Invalid email or password." };
 
