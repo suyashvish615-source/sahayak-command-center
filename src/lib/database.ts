@@ -88,7 +88,7 @@ export async function registerTeacher(data: {
     .from("users")
     .select("id, status")
     .eq("email", data.email)
-    .single();
+    .maybeSingle();
 
   if (existing) {
     if (existing.status === "pending") return { success: false, error: "Your account is already registered and pending approval." };
