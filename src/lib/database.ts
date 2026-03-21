@@ -119,7 +119,7 @@ export async function loginUser(email: string, password: string): Promise<{
     .select("*")
     .eq("email", email)
     .eq("password_hash", password)
-    .single();
+    .maybeSingle();
 
   if (error || !data) return { user: null, error: "Invalid email or password." };
 
