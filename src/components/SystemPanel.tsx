@@ -13,39 +13,23 @@ interface SystemPanelProps {
 }
 
 const SystemPanel = ({ 
-  title, 
-  subtitle, 
-  children, 
-  className, 
-  headerAction,
-  animate = true,
-  delay = 0
+  title, subtitle, children, className, headerAction, animate = true, delay = 0
 }: SystemPanelProps) => {
   const content = (
     <div className={cn(
-      "system-panel p-5 relative overflow-hidden group",
-      "transition-all duration-300 hover:border-primary/30",
+      "rounded-xl border border-border bg-card p-5",
       className
     )}>
-      {/* Subtle gradient overlay on hover */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/0 to-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-      
       {(title || subtitle || headerAction) && (
-        <div className="flex items-start justify-between mb-4 relative z-10">
+        <div className="flex items-start justify-between mb-4">
           <div>
-            {title && (
-              <h3 className="font-display font-semibold text-foreground text-sm tracking-tight">
-                {title}
-              </h3>
-            )}
-            {subtitle && (
-              <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
-            )}
+            {title && <h3 className="font-semibold text-foreground text-sm">{title}</h3>}
+            {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
           </div>
           {headerAction && <div>{headerAction}</div>}
         </div>
       )}
-      <div className="relative z-10">{children}</div>
+      <div>{children}</div>
     </div>
   );
 
@@ -53,19 +37,9 @@ const SystemPanel = ({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ 
-        duration: 0.5, 
-        delay,
-        type: "spring",
-        stiffness: 100,
-        damping: 15
-      }}
-      whileHover={{ 
-        y: -2,
-        transition: { duration: 0.2 }
-      }}
+      transition={{ duration: 0.4, delay, ease: [0.25, 0.4, 0.25, 1] }}
     >
       {content}
     </motion.div>

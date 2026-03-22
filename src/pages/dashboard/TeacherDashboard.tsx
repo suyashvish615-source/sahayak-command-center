@@ -2,12 +2,10 @@ import { useState, useEffect } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import SystemPanel from "@/components/SystemPanel";
 import ActionTile from "@/components/ActionTile";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { 
   Clock, Play, CheckCircle, AlertTriangle, Volume2, Zap,
-  BookOpen, Timer, Send, Loader2, Sparkles
+  Timer, Send, Loader2, Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { externalSupabase } from "@/lib/supabaseExternal";
@@ -26,26 +24,22 @@ const TeacherDashboard = () => {
   const [reflectionLoading, setReflectionLoading] = useState(false);
   const [reflectionFeedback, setReflectionFeedback] = useState<any>(null);
 
-  // Form states
   const [grade, setGrade] = useState("");
   const [subject, setSubject] = useState("");
   const [topic, setTopic] = useState("");
   const [duration, setDuration] = useState("40");
   const [classType, setClassType] = useState("regular");
 
-  // Session tracking
   const [currentSession, setCurrentSession] = useState<DBSession | null>(null);
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
   const [interventionCount, setInterventionCount] = useState(0);
 
-  // Reflection state
   const [reflectionNote, setReflectionNote] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
   const teacherEmail = localStorage.getItem("sahayak_user_email") || "teacher@school.gov.in";
 
-  // Timer for during class
   useEffect(() => {
     if (activeMode === "during" && sessionStartTime) {
       const interval = setInterval(() => {
@@ -66,7 +60,7 @@ const TeacherDashboard = () => {
 
   const handleGenerateBlueprint = async () => {
     if (!grade || !subject || !topic) {
-      toast({ title: "Missing fields", description: "Please fill in Grade, Subject, and Topic", variant: "destructive" });
+      toast({ title: "Missing fields", description: "Fill in Grade, Subject, and Topic", variant: "destructive" });
       return;
     }
     setBlueprintLoading(true);
@@ -74,23 +68,16 @@ const TeacherDashboard = () => {
     try {
       const result = await callAI("blueprint", { grade, subject, topic, duration, classType });
       setBlueprintData(result);
-
-      // Create session in database
       const session = await createSession({
-        teacher_email: teacherEmail,
-        grade, subject, topic,
-        duration: parseInt(duration),
-        class_type: classType,
-        blueprint: result,
+        teacher_email: teacherEmail, grade, subject, topic,
+        duration: parseInt(duration), class_type: classType, blueprint: result,
       });
       setCurrentSession(session);
       setInterventionCount(0);
-      toast({ title: "Blueprint Generated", description: "Your classroom blueprint is ready" });
+      toast({ title: "Blueprint generated" });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally {
-      setBlueprintLoading(false);
-    }
+    } finally { setBlueprintLoading(false); }
   };
 
   const handleStartClass = async () => {
@@ -98,14 +85,11 @@ const TeacherDashboard = () => {
     setSessionStartTime(new Date());
     setElapsedMinutes(0);
     setInterventionData(null);
-
     if (currentSession) {
       try {
         await updateSession(currentSession.id, { status: "active", started_at: new Date().toISOString() } as any);
         setCurrentSession({ ...currentSession, status: "active", started_at: new Date().toISOString() });
-      } catch (err) {
-        console.error("Failed to update session status", err);
-      }
+      } catch (err) { console.error(err); }
     }
   };
 
@@ -120,22 +104,13 @@ const TeacherDashboard = () => {
         topic: currentSession?.topic || topic,
       });
       setInterventionData({ type, ...result });
-
-      // Save to database
       if (currentSession) {
-        await createIntervention({
-          session_id: currentSession.id,
-          teacher_email: teacherEmail,
-          type,
-          ai_response: result,
-        });
+        await createIntervention({ session_id: currentSession.id, teacher_email: teacherEmail, type, ai_response: result });
         setInterventionCount(prev => prev + 1);
       }
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally {
-      setInterventionLoading(null);
-    }
+    } finally { setInterventionLoading(null); }
   };
 
   const handleEndClass = async () => {
@@ -144,48 +119,32 @@ const TeacherDashboard = () => {
       try {
         await updateSession(currentSession.id, { status: "completed", ended_at: new Date().toISOString() } as any);
         setCurrentSession({ ...currentSession, status: "completed", ended_at: new Date().toISOString() });
-      } catch (err) {
-        console.error("Failed to update session status", err);
-      }
+      } catch (err) { console.error(err); }
     }
   };
 
   const handleSubmitReflection = async () => {
     if (!reflectionNote && selectedTags.length === 0) {
-      toast({ title: "Add reflection", description: "Please add tags or notes", variant: "destructive" });
+      toast({ title: "Add reflection", description: "Add tags or notes", variant: "destructive" });
       return;
     }
     setReflectionLoading(true);
     try {
       const result = await callAI("reflection", {
-        tags: selectedTags,
-        note: reflectionNote,
+        tags: selectedTags, note: reflectionNote,
         sessionSummary: {
-          grade: currentSession?.grade || grade,
-          subject: currentSession?.subject || subject,
-          topic: currentSession?.topic || topic,
-          duration: currentSession?.duration || parseInt(duration),
-          interventionCount,
+          grade: currentSession?.grade || grade, subject: currentSession?.subject || subject,
+          topic: currentSession?.topic || topic, duration: currentSession?.duration || parseInt(duration), interventionCount,
         },
       });
       setReflectionFeedback(result);
-
-      // Save to database
       if (currentSession) {
-        await createReflection({
-          session_id: currentSession.id,
-          teacher_email: teacherEmail,
-          tags: selectedTags,
-          note: reflectionNote,
-          ai_feedback: result,
-        });
+        await createReflection({ session_id: currentSession.id, teacher_email: teacherEmail, tags: selectedTags, note: reflectionNote, ai_feedback: result });
       }
-      toast({ title: "Reflection Submitted", description: "AI feedback generated" });
+      toast({ title: "Reflection submitted" });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally {
-      setReflectionLoading(false);
-    }
+    } finally { setReflectionLoading(false); }
   };
 
   const toggleTag = (tag: string) => {
@@ -194,47 +153,46 @@ const TeacherDashboard = () => {
 
   const reflectionTags = ["Engaged", "Challenging", "Successful", "Needs Review", "Tech Issues", "Time Constrained", "Great Questions"];
 
+  const modes = [
+    { id: "before" as Mode, label: "Before Class", icon: Clock },
+    { id: "during" as Mode, label: "During Class", icon: Play },
+    { id: "after" as Mode, label: "After Class", icon: CheckCircle },
+  ];
+
   return (
     <DashboardLayout role="teacher">
       <div className="min-h-screen">
         {/* Header */}
-        <header className="border-b border-panel-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
-          <div className="px-6 h-16 flex items-center justify-between">
+        <header className="border-b border-border glass sticky top-0 z-40">
+          <div className="px-6 h-14 flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <h1 className="font-display text-lg font-semibold text-foreground">Classroom Control</h1>
-              <div className="flex items-center gap-2 px-2.5 py-1 rounded-full border border-panel-border bg-panel-elevated">
+              <h1 className="font-semibold text-foreground">Classroom Control</h1>
+              <div className="flex items-center gap-2 px-2.5 py-1 rounded-full border border-border bg-accent/50">
                 <span className="status-online" />
-                <span className="text-xs text-muted-foreground">
-                  {currentSession ? `Session: ${currentSession.subject} — ${currentSession.topic}` : "System Ready"}
+                <span className="text-xs text-muted-foreground font-mono">
+                  {currentSession ? `${currentSession.subject} — ${currentSession.topic}` : "Ready"}
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Timer className="w-4 h-4" />
-              <span>{new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
+              <Timer className="w-3.5 h-3.5" />
+              {new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
             </div>
           </div>
         </header>
 
-        {/* Mode Switcher */}
-        <div className="border-b border-panel-border bg-panel">
-          <div className="px-6 py-3 flex gap-2">
-            {([
-              { id: "before" as Mode, label: "Before Class", icon: Clock },
-              { id: "during" as Mode, label: "During Class", icon: Play },
-              { id: "after" as Mode, label: "After Class", icon: CheckCircle },
-            ]).map((mode) => (
-              <button
-                key={mode.id}
-                onClick={() => setActiveMode(mode.id)}
+        {/* Mode Tabs */}
+        <div className="border-b border-border bg-card/50">
+          <div className="px-6 py-2.5 flex gap-1">
+            {modes.map((mode) => (
+              <button key={mode.id} onClick={() => setActiveMode(mode.id)}
                 className={cn(
-                  "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all",
+                  "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
                   activeMode === mode.id
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                )}
-              >
-                <mode.icon className="w-4 h-4" />
+                )}>
+                <mode.icon className="w-3.5 h-3.5" />
                 {mode.label}
               </button>
             ))}
@@ -246,33 +204,31 @@ const TeacherDashboard = () => {
           {/* BEFORE CLASS */}
           {activeMode === "before" && (
             <div className="grid lg:grid-cols-2 gap-6 animate-fade-in">
-              <SystemPanel title="Session Configuration" subtitle="Define your classroom parameters">
+              <SystemPanel title="Session Configuration" subtitle="Define classroom parameters">
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground uppercase tracking-wide">Grade</Label>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Grade</label>
                       <Input placeholder="e.g., 8th" value={grade} onChange={(e) => setGrade(e.target.value)} />
                     </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground uppercase tracking-wide">Subject</Label>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Subject</label>
                       <Input placeholder="e.g., Mathematics" value={subject} onChange={(e) => setSubject(e.target.value)} />
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs text-muted-foreground uppercase tracking-wide">Topic</Label>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Topic</label>
                     <Input placeholder="e.g., Linear Equations" value={topic} onChange={(e) => setTopic(e.target.value)} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground uppercase tracking-wide">Duration (min)</Label>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Duration (min)</label>
                       <Input type="number" value={duration} onChange={(e) => setDuration(e.target.value)} />
                     </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground uppercase tracking-wide">Class Type</Label>
-                      <select
-                        className="flex h-10 w-full rounded-md border border-panel-border bg-panel-elevated px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                        value={classType} onChange={(e) => setClassType(e.target.value)}
-                      >
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Class Type</label>
+                      <select className="flex h-10 w-full rounded-xl border border-border bg-accent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                        value={classType} onChange={(e) => setClassType(e.target.value)}>
                         <option value="regular">Regular</option>
                         <option value="remedial">Remedial</option>
                         <option value="enrichment">Enrichment</option>
@@ -280,59 +236,56 @@ const TeacherDashboard = () => {
                       </select>
                     </div>
                   </div>
-                  <div className="pt-4">
-                    <Button variant="system" className="w-full" onClick={handleGenerateBlueprint} disabled={blueprintLoading}>
-                      {blueprintLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Generating...</> : <><Sparkles className="w-4 h-4" /> Generate Classroom Blueprint</>}
-                    </Button>
-                  </div>
+                  <button onClick={handleGenerateBlueprint} disabled={blueprintLoading}
+                    className="w-full bg-primary text-primary-foreground font-semibold py-3 rounded-xl text-sm hover:brightness-110 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                    {blueprintLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    {blueprintLoading ? "Generating..." : "Generate Blueprint"}
+                  </button>
                 </div>
               </SystemPanel>
 
-              <SystemPanel title="Classroom Blueprint" subtitle={blueprintData ? "AI-generated teaching plan" : "Configure session to generate"}>
+              <SystemPanel title="Classroom Blueprint" subtitle={blueprintData ? "AI-generated plan" : "Configure session to generate"}>
                 {blueprintLoading ? (
                   <div className="h-64 flex flex-col items-center justify-center gap-3 text-muted-foreground">
                     <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                    <p className="text-sm">Generating blueprint with Gemini AI...</p>
+                    <p className="text-sm">Generating with AI...</p>
                   </div>
                 ) : blueprintData ? (
                   <div className="space-y-4 animate-fade-in">
-                    <div className="p-4 rounded-md border border-primary/30 bg-primary/5">
-                      <div className="text-xs uppercase tracking-wide text-primary mb-2">Learning Objective</div>
+                    <div className="p-4 rounded-xl border border-primary/20 bg-primary/5">
+                      <div className="text-[10px] uppercase tracking-widest text-primary mb-2 font-medium">Objective</div>
                       <p className="text-sm text-foreground">{blueprintData.objective}</p>
                     </div>
                     {blueprintData.steps?.map((step: any, idx: number) => (
-                      <div key={idx} className="flex items-start gap-3 p-3 rounded-md bg-panel-elevated">
-                        <div className="w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center mt-0.5">{idx + 1}</div>
+                      <div key={idx} className="flex items-start gap-3 p-3 rounded-xl bg-accent/50">
+                        <div className="w-6 h-6 rounded-lg bg-primary/20 text-primary text-xs font-bold flex items-center justify-center mt-0.5 flex-shrink-0">{idx + 1}</div>
                         <div>
-                          <div className="text-sm font-medium text-foreground">{step.phase} ({step.duration})</div>
-                          <p className="text-xs text-muted-foreground">{step.activity}</p>
+                          <div className="text-sm font-medium text-foreground">{step.phase} <span className="text-muted-foreground font-normal">({step.duration})</span></div>
+                          <p className="text-xs text-muted-foreground mt-0.5">{step.activity}</p>
                         </div>
                       </div>
                     ))}
                     {blueprintData.materials && (
-                      <div className="p-3 rounded-md bg-panel-elevated">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2">Materials Needed</div>
-                        <div className="flex flex-wrap gap-2">
-                          {blueprintData.materials.map((m: string, i: number) => (
-                            <span key={i} className="px-2 py-1 text-xs bg-primary/10 text-primary rounded-md">{m}</span>
-                          ))}
-                        </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {blueprintData.materials.map((m: string, i: number) => (
+                          <span key={i} className="px-2.5 py-1 text-xs bg-accent text-muted-foreground rounded-lg border border-border">{m}</span>
+                        ))}
                       </div>
                     )}
                     {blueprintData.difficultyAdaptations && (
-                      <div className="p-3 rounded-md bg-panel-elevated space-y-2">
-                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Adaptations</div>
-                        <p className="text-xs text-muted-foreground"><span className="text-system-warning font-medium">Struggling: </span>{blueprintData.difficultyAdaptations.struggling}</p>
-                        <p className="text-xs text-muted-foreground"><span className="text-primary font-medium">Advanced: </span>{blueprintData.difficultyAdaptations.advanced}</p>
+                      <div className="p-3 rounded-xl bg-accent/50 space-y-1.5 text-xs text-muted-foreground">
+                        <p><span className="text-system-warning font-medium">Struggling: </span>{blueprintData.difficultyAdaptations.struggling}</p>
+                        <p><span className="text-primary font-medium">Advanced: </span>{blueprintData.difficultyAdaptations.advanced}</p>
                       </div>
                     )}
-                    <Button variant="system" className="w-full mt-2" onClick={handleStartClass}>
-                      <Play className="w-4 h-4" /> Start Class Session
-                    </Button>
+                    <button onClick={handleStartClass}
+                      className="w-full bg-foreground text-background font-semibold py-3 rounded-xl text-sm hover:bg-foreground/90 transition-colors flex items-center justify-center gap-2">
+                      <Play className="w-4 h-4" /> Start Class
+                    </button>
                   </div>
                 ) : (
-                  <div className="h-64 flex items-center justify-center text-muted-foreground">
-                    <p className="text-sm">Blueprint will appear here</p>
+                  <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
+                    Blueprint will appear here
                   </div>
                 )}
               </SystemPanel>
@@ -342,38 +295,38 @@ const TeacherDashboard = () => {
           {/* DURING CLASS */}
           {activeMode === "during" && (
             <div className="space-y-6 animate-fade-in">
-              <SystemPanel title="Situation Response" subtitle="Select intervention type — AI will provide real-time strategies">
+              <SystemPanel title="Situation Response" subtitle="Select intervention type">
                 <div className="grid md:grid-cols-3 gap-4">
                   <ActionTile
-                    icon={interventionLoading === "confusion" ? <Loader2 className="w-8 h-8 animate-spin" /> : <AlertTriangle className="w-8 h-8" />}
+                    icon={interventionLoading === "confusion" ? <Loader2 className="w-7 h-7 animate-spin" /> : <AlertTriangle className="w-7 h-7" />}
                     title="Confusion Detected"
-                    description="Students struggling to understand current concept."
-                    status={interventionLoading === "confusion" ? "warning" : interventionData?.type === "confusion" ? "warning" : "idle"}
+                    description="Students struggling to understand."
+                    status={interventionData?.type === "confusion" ? "warning" : "idle"}
                     onClick={() => handleIntervention("confusion")}
                   />
                   <ActionTile
-                    icon={interventionLoading === "noise" ? <Loader2 className="w-8 h-8 animate-spin" /> : <Volume2 className="w-8 h-8" />}
+                    icon={interventionLoading === "noise" ? <Loader2 className="w-7 h-7 animate-spin" /> : <Volume2 className="w-7 h-7" />}
                     title="Noise / Disruption"
                     description="Classroom management needed."
-                    status={interventionLoading === "noise" ? "critical" : interventionData?.type === "noise" ? "critical" : "idle"}
+                    status={interventionData?.type === "noise" ? "critical" : "idle"}
                     onClick={() => handleIntervention("noise")}
                   />
                   <ActionTile
-                    icon={interventionLoading === "idle" ? <Loader2 className="w-8 h-8 animate-spin" /> : <Zap className="w-8 h-8" />}
+                    icon={interventionLoading === "idle" ? <Loader2 className="w-7 h-7 animate-spin" /> : <Zap className="w-7 h-7" />}
                     title="Fast Finishers Idle"
                     description="Advanced students completed tasks."
-                    status={interventionLoading === "idle" ? "active" : interventionData?.type === "idle" ? "active" : "idle"}
+                    status={interventionData?.type === "idle" ? "active" : "idle"}
                     onClick={() => handleIntervention("idle")}
                   />
                 </div>
               </SystemPanel>
 
               {interventionData && (
-                <SystemPanel title={interventionData.title || "System Recommendation"} subtitle="AI-generated action guidance" className="border-primary/30 animate-fade-in">
-                  <div className="p-4 rounded-md bg-primary/5 border border-primary/20 space-y-3">
+                <SystemPanel title={interventionData.title || "System Recommendation"} subtitle="AI-generated guidance" className="border-primary/20 animate-fade-in">
+                  <div className="p-4 rounded-xl bg-primary/5 border border-primary/10 space-y-3">
                     {interventionData.urgency && (
                       <div className="flex items-center gap-2">
-                        <span className="text-xs uppercase tracking-wide text-muted-foreground">Urgency:</span>
+                        <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Urgency:</span>
                         <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full",
                           interventionData.urgency === "high" ? "bg-destructive/20 text-destructive" :
                           interventionData.urgency === "medium" ? "bg-system-warning/20 text-system-warning" :
@@ -390,7 +343,7 @@ const TeacherDashboard = () => {
                       ))}
                     </ul>
                     {interventionData.followUp && (
-                      <div className="pt-3 border-t border-panel-border">
+                      <div className="pt-3 border-t border-border">
                         <p className="text-xs text-muted-foreground"><span className="text-primary font-medium">Follow-up: </span>{interventionData.followUp}</p>
                       </div>
                     )}
@@ -399,48 +352,43 @@ const TeacherDashboard = () => {
               )}
 
               <div className="grid grid-cols-3 gap-4">
-                <SystemPanel>
-                  <div className="text-center">
-                    <div className="text-3xl font-display font-bold text-foreground">{elapsedMinutes}</div>
-                    <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">Minutes Elapsed</div>
-                  </div>
-                </SystemPanel>
-                <SystemPanel>
-                  <div className="text-center">
-                    <div className="text-3xl font-display font-bold text-system-success">{interventionCount}</div>
-                    <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">Interventions Used</div>
-                  </div>
-                </SystemPanel>
-                <SystemPanel>
-                  <div className="text-center">
-                    <div className="text-3xl font-display font-bold text-primary">{currentSession?.subject || "—"}</div>
-                    <div className="text-xs text-muted-foreground uppercase tracking-wide mt-1">Current Subject</div>
-                  </div>
-                </SystemPanel>
+                {[
+                  { value: elapsedMinutes, label: "Minutes Elapsed", color: "text-foreground" },
+                  { value: interventionCount, label: "Interventions", color: "text-primary" },
+                  { value: currentSession?.subject || "—", label: "Subject", color: "text-foreground" },
+                ].map((stat) => (
+                  <SystemPanel key={stat.label}>
+                    <div className="text-center">
+                      <div className={cn("text-2xl font-bold font-mono", stat.color)}>{stat.value}</div>
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-widest mt-1">{stat.label}</div>
+                    </div>
+                  </SystemPanel>
+                ))}
               </div>
 
               <div className="flex justify-center">
-                <Button variant="system" onClick={handleEndClass}>
+                <button onClick={handleEndClass}
+                  className="bg-foreground text-background font-semibold px-8 py-3 rounded-xl text-sm hover:bg-foreground/90 transition-colors flex items-center gap-2">
                   <CheckCircle className="w-4 h-4" /> End Class & Reflect
-                </Button>
+                </button>
               </div>
             </div>
           )}
 
           {/* AFTER CLASS */}
           {activeMode === "after" && (
-            <div className="max-w-2xl mx-auto animate-fade-in">
-              <SystemPanel title="Session Reflection" subtitle="Record insights — AI will analyze and provide feedback">
+            <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+              <SystemPanel title="Session Reflection" subtitle="Record insights — AI will analyze">
                 <div className="space-y-5">
-                  <div className="space-y-3">
-                    <Label className="text-xs text-muted-foreground uppercase tracking-wide">Quick Tags</Label>
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Quick Tags</label>
                     <div className="flex flex-wrap gap-2">
                       {reflectionTags.map((tag) => (
                         <button key={tag} onClick={() => toggleTag(tag)} className={cn(
-                          "px-3 py-1.5 rounded-md text-xs font-medium transition-all border",
+                          "px-3 py-1.5 rounded-lg text-xs font-medium transition-all border",
                           selectedTags.includes(tag)
                             ? "bg-primary text-primary-foreground border-primary"
-                            : "bg-panel-elevated text-muted-foreground border-panel-border hover:border-primary/50"
+                            : "bg-accent text-muted-foreground border-border hover:border-primary/40"
                         )}>
                           {tag}
                         </button>
@@ -448,69 +396,62 @@ const TeacherDashboard = () => {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs text-muted-foreground uppercase tracking-wide">Reflection Notes</Label>
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Notes</label>
                     <textarea
-                      className="flex min-h-32 w-full rounded-md border border-panel-border bg-panel-elevated px-3 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+                      className="flex min-h-32 w-full rounded-xl border border-border bg-accent px-3 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
                       placeholder="What worked well? What would you do differently?"
                       value={reflectionNote} onChange={(e) => setReflectionNote(e.target.value)}
                     />
                   </div>
-                  <Button variant="system" className="w-full" onClick={handleSubmitReflection} disabled={reflectionLoading}>
-                    {reflectionLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Analyzing...</> : <><Send className="w-4 h-4" /> Submit Reflection</>}
-                  </Button>
+                  <button onClick={handleSubmitReflection} disabled={reflectionLoading}
+                    className="w-full bg-primary text-primary-foreground font-semibold py-3 rounded-xl text-sm hover:brightness-110 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                    {reflectionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    {reflectionLoading ? "Analyzing..." : "Submit Reflection"}
+                  </button>
                 </div>
               </SystemPanel>
 
               {reflectionFeedback && (
-                <SystemPanel title="AI Feedback" subtitle="Analysis of your session" className="mt-6 border-primary/30 animate-fade-in">
+                <SystemPanel title="AI Feedback" subtitle="Session analysis" className="border-primary/20 animate-fade-in">
                   <div className="space-y-4">
-                    <div className="p-3 rounded-md bg-primary/5 border border-primary/20">
+                    <div className="p-3 rounded-xl bg-primary/5 border border-primary/10">
                       <p className="text-sm text-foreground">{reflectionFeedback.summary}</p>
                     </div>
                     {reflectionFeedback.strengths?.length > 0 && (
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-system-success mb-2">Strengths</div>
-                        <ul className="space-y-1">{reflectionFeedback.strengths.map((s: string, i: number) => <li key={i} className="text-sm text-muted-foreground flex items-start gap-2"><CheckCircle className="w-3.5 h-3.5 text-system-success mt-0.5 flex-shrink-0" />{s}</li>)}</ul>
+                        <div className="text-[10px] uppercase tracking-widest text-primary mb-2 font-medium">Strengths</div>
+                        <ul className="space-y-1">{reflectionFeedback.strengths.map((s: string, i: number) => <li key={i} className="text-sm text-muted-foreground flex items-start gap-2"><CheckCircle className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />{s}</li>)}</ul>
                       </div>
                     )}
                     {reflectionFeedback.improvements?.length > 0 && (
                       <div>
-                        <div className="text-xs uppercase tracking-wide text-system-warning mb-2">Areas for Growth</div>
+                        <div className="text-[10px] uppercase tracking-widest text-system-warning mb-2 font-medium">Growth Areas</div>
                         <ul className="space-y-1">{reflectionFeedback.improvements.map((s: string, i: number) => <li key={i} className="text-sm text-muted-foreground flex items-start gap-2"><AlertTriangle className="w-3.5 h-3.5 text-system-warning mt-0.5 flex-shrink-0" />{s}</li>)}</ul>
                       </div>
                     )}
                     {reflectionFeedback.nextSessionTip && (
-                      <div className="p-3 rounded-md bg-panel-elevated">
-                        <div className="text-xs uppercase tracking-wide text-primary mb-1">Next Session Tip</div>
+                      <div className="p-3 rounded-xl bg-accent/50">
+                        <div className="text-[10px] uppercase tracking-widest text-primary mb-1 font-medium">Next Session Tip</div>
                         <p className="text-sm text-foreground">{reflectionFeedback.nextSessionTip}</p>
                       </div>
-                    )}
-                    {reflectionFeedback.encouragement && (
-                      <p className="text-sm text-primary italic">{reflectionFeedback.encouragement}</p>
                     )}
                   </div>
                 </SystemPanel>
               )}
 
-              {/* Session Summary */}
-              <SystemPanel title="Session Summary" subtitle="Data from this session" className="mt-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-3 rounded-md bg-panel-elevated">
-                    <div className="text-xs text-muted-foreground mb-1">Duration</div>
-                    <div className="text-lg font-display font-semibold text-foreground">{currentSession?.duration || duration} min</div>
-                  </div>
-                  <div className="p-3 rounded-md bg-panel-elevated">
-                    <div className="text-xs text-muted-foreground mb-1">Interventions</div>
-                    <div className="text-lg font-display font-semibold text-foreground">{interventionCount}</div>
-                  </div>
-                  <div className="p-3 rounded-md bg-panel-elevated">
-                    <div className="text-xs text-muted-foreground mb-1">Topic</div>
-                    <div className="text-lg font-display font-semibold text-foreground">{currentSession?.topic || topic || "—"}</div>
-                  </div>
-                  <div className="p-3 rounded-md bg-panel-elevated">
-                    <div className="text-xs text-muted-foreground mb-1">Class Type</div>
-                    <div className="text-lg font-display font-semibold text-foreground capitalize">{currentSession?.class_type || classType}</div>
-                  </div>
+              <SystemPanel title="Session Summary">
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: "Duration", value: `${currentSession?.duration || duration} min` },
+                    { label: "Interventions", value: interventionCount },
+                    { label: "Topic", value: currentSession?.topic || topic || "—" },
+                    { label: "Type", value: currentSession?.class_type || classType },
+                  ].map((item) => (
+                    <div key={item.label} className="p-3 rounded-xl bg-accent/50">
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-widest">{item.label}</div>
+                      <div className="text-sm font-semibold text-foreground mt-1 capitalize">{item.value}</div>
+                    </div>
+                  ))}
                 </div>
               </SystemPanel>
             </div>

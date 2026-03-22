@@ -1,17 +1,10 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  Shield, ArrowLeft, Eye, EyeOff, User, Lock,
-  AlertCircle, CheckCircle, Clock, UserPlus
+  ArrowLeft, Eye, EyeOff, AlertCircle, CheckCircle, Clock, Loader2
 } from "lucide-react";
-import FloatingParticles from "@/components/ui/FloatingParticles";
-import GlowingOrb from "@/components/ui/GlowingOrb";
-import HexagonGrid from "@/components/ui/HexagonGrid";
-import InteractiveCard from "@/components/ui/InteractiveCard";
 import { loginUser, registerTeacher } from "@/lib/database";
 
 type View = "login" | "register" | "pending";
@@ -41,35 +34,20 @@ const Login = () => {
 
     const { user, error: loginError } = await loginUser(email, password);
 
-    if (loginError === "PENDING") {
-      setView("pending");
-      setIsLoading(false);
-      return;
-    }
-
-    if (loginError === "REJECTED") {
-      setError("Your registration was rejected. Please contact your admin.");
-      setIsLoading(false);
-      return;
-    }
-
-    if (!user) {
-      setError(loginError || "Invalid email or password.");
-      setIsLoading(false);
-      return;
-    }
+    if (loginError === "PENDING") { setView("pending"); setIsLoading(false); return; }
+    if (loginError === "REJECTED") { setError("Registration rejected. Contact your admin."); setIsLoading(false); return; }
+    if (!user) { setError(loginError || "Invalid credentials."); setIsLoading(false); return; }
 
     localStorage.setItem("sahayak_user_email", user.email);
     localStorage.setItem("sahayak_user_role", user.role);
     localStorage.setItem("sahayak_user_name", user.name);
-    setSuccess(`${user.role.toUpperCase()} access granted. Redirecting...`);
+    setSuccess("Access granted. Redirecting...");
 
     setTimeout(() => {
       if (user.role === "admin") navigate("/dashboard/admin");
       else if (user.role === "crp") navigate("/dashboard/crp");
       else navigate("/dashboard/teacher");
-    }, 1000);
-
+    }, 800);
     setIsLoading(false);
   };
 
@@ -77,28 +55,13 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
     setError("");
-    setSuccess("");
-
-    if (!regName || !regEmail || !regPassword) {
-      setError("Name, email, and password are required.");
-      setIsLoading(false);
-      return;
-    }
+    if (!regName || !regEmail || !regPassword) { setError("All required fields must be filled."); setIsLoading(false); return; }
 
     const { success: ok, error: regError } = await registerTeacher({
-      email: regEmail,
-      name: regName,
-      password: regPassword,
-      school_name: regSchool,
-      phone: regPhone,
+      email: regEmail, name: regName, password: regPassword, school_name: regSchool, phone: regPhone,
     });
 
-    if (!ok) {
-      setError(regError || "Registration failed.");
-      setIsLoading(false);
-      return;
-    }
-
+    if (!ok) { setError(regError || "Registration failed."); setIsLoading(false); return; }
     setView("pending");
     setIsLoading(false);
   };
@@ -106,325 +69,216 @@ const Login = () => {
   const formVariants = {
     hidden: { opacity: 0, y: 20 },
     visible: { opacity: 1, y: 0, transition: { duration: 0.4 } },
-    exit: { opacity: 0, y: -20, transition: { duration: 0.25 } },
-  } as const;
+    exit: { opacity: 0, y: -20, transition: { duration: 0.2 } },
+  };
 
   return (
-    <div className="min-h-screen bg-background flex overflow-hidden">
-      {/* Left branding panel */}
-      <motion.div
-        initial={{ opacity: 0, x: -50 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.8, type: "spring" }}
-        className="hidden lg:flex lg:w-1/2 relative border-r border-panel-border"
-      >
-        <HexagonGrid />
-        <FloatingParticles count={20} />
-        <GlowingOrb className="-top-32 -left-32" size="xl" color="primary" delay={0} />
-        <GlowingOrb className="bottom-1/4 right-1/4" size="md" color="info" delay={2} />
+    <div className="min-h-screen bg-background flex noise-bg">
+      {/* Left Panel — branding */}
+      <div className="hidden lg:flex lg:w-1/2 relative items-center justify-center border-r border-border overflow-hidden">
+        {/* Ambient */}
+        <div className="absolute top-[20%] left-[20%] w-[500px] h-[500px] rounded-full opacity-[0.04]"
+          style={{ background: "radial-gradient(circle, hsl(160 84% 39%), transparent 70%)" }} />
 
-        <div className="relative z-10 flex flex-col justify-center px-16">
-          <div className="space-y-8">
-            <div className="flex items-center gap-3 mb-8">
+        <div className="relative z-10 px-16 max-w-lg">
+          <div className="flex items-center gap-2.5 mb-12">
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+              <span className="text-primary-foreground font-black text-sm">S</span>
+            </div>
+            <span className="font-bold text-lg tracking-tight">SAHAYAK OS</span>
+          </div>
+
+          <h2 className="text-4xl font-bold tracking-tight text-foreground leading-[1.1] mb-4">
+            System<br />
+            <span className="font-serif italic font-normal text-gradient-primary">Access</span>
+          </h2>
+
+          <p className="text-muted-foreground leading-relaxed text-sm mb-12">
+            Secure authentication gateway for classroom management infrastructure.
+            Role-based access for teachers, mentors, and administrators.
+          </p>
+
+          <div className="space-y-3">
+            {[
+              { label: "Teacher", desc: "Register & get admin approval" },
+              { label: "CRP/Mentor", desc: "Analytics & oversight" },
+              { label: "Admin", desc: "System management" },
+            ].map((item, i) => (
               <motion.div
-                className="w-12 h-12 rounded-lg bg-primary/10 border border-primary/30 flex items-center justify-center"
-                animate={{ boxShadow: ["0 0 0px hsl(var(--primary)/0.3)", "0 0 30px hsl(var(--primary)/0.3)", "0 0 0px hsl(var(--primary)/0.3)"] }}
-                transition={{ duration: 2, repeat: Infinity }}
+                key={i}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.5 + i * 0.1 }}
+                className="flex items-center gap-3 text-sm text-muted-foreground p-3 rounded-xl border border-border bg-accent/30"
               >
-                <Shield className="w-6 h-6 text-primary" />
+                <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                <span className="text-foreground font-medium">{item.label}</span>
+                <span className="text-muted-foreground">— {item.desc}</span>
               </motion.div>
-              <span className="font-display text-2xl font-bold tracking-tight">SAHAYAK OS</span>
-            </div>
-
-            <h2 className="font-display text-4xl font-bold text-foreground">System Access</h2>
-            <p className="text-muted-foreground max-w-md leading-relaxed">
-              Secure authentication gateway for classroom management infrastructure.
-              Teachers register and are approved by the admin before accessing the system.
-            </p>
-
-            <div className="mt-12 space-y-4">
-              {[
-                { color: "bg-primary", label: "Teacher — register and await approval" },
-                { color: "bg-primary", label: "CRP/Mentor — analytics & oversight" },
-                { color: "bg-primary", label: "Admin — approves teachers, manages system" },
-              ].map((item, i) => (
-                <motion.div
-                  key={i}
-                  className="flex items-center gap-3 text-sm text-muted-foreground p-3 rounded-lg border border-border bg-accent/50 backdrop-blur-sm"
-                  whileHover={{ x: 5, borderColor: "hsl(var(--primary)/0.5)" }}
-                  transition={{ type: "spring", stiffness: 300 }}
-                >
-                  <motion.div
-                    className={`w-2 h-2 rounded-full ${item.color}`}
-                    animate={{ scale: [1, 1.3, 1] }}
-                    transition={{ duration: 2, repeat: Infinity, delay: i * 0.3 }}
-                  />
-                  <span>{item.label}</span>
-                </motion.div>
-              ))}
-            </div>
+            ))}
           </div>
         </div>
-      </motion.div>
+      </div>
 
-      {/* Right form panel */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.6 }}
-        className="flex-1 flex flex-col relative"
-      >
-        <FloatingParticles count={10} className="lg:hidden" />
-
+      {/* Right Panel — form */}
+      <div className="flex-1 flex flex-col relative">
         <header className="p-6 relative z-10">
-          <Link to="/">
-            <motion.div
-              className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
-              whileHover={{ x: -3 }}
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="text-sm">Back to Landing</span>
-            </motion.div>
+          <Link to="/" className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors text-sm">
+            <ArrowLeft className="w-4 h-4" />
+            Back
           </Link>
         </header>
 
         <div className="flex-1 flex items-center justify-center px-6 relative z-10">
           <div className="w-full max-w-sm">
             <AnimatePresence mode="wait">
-
-              {/* PENDING VIEW */}
+              {/* PENDING */}
               {view === "pending" && (
-                <motion.div
-                  key="pending"
-                  variants={formVariants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                  className="space-y-6 text-center"
-                >
-                  <motion.div
-                    className="w-20 h-20 rounded-full bg-accent border border-border flex items-center justify-center mx-auto"
-                    animate={{ scale: [1, 1.05, 1] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                  >
-                    <Clock className="w-10 h-10 text-primary" />
-                  </motion.div>
+                <motion.div key="pending" variants={formVariants} initial="hidden" animate="visible" exit="exit" className="space-y-6 text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-accent border border-border flex items-center justify-center mx-auto">
+                    <Clock className="w-8 h-8 text-primary" />
+                  </div>
                   <div>
-                    <h2 className="font-display text-2xl font-bold text-foreground mb-2">
-                      Approval Pending
-                    </h2>
-                    <p className="text-muted-foreground text-sm leading-relaxed">
-                      Your registration has been submitted. The admin will review
-                      and approve your account. You'll be able to log in once approved.
+                    <h2 className="text-xl font-bold text-foreground mb-2">Approval Pending</h2>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      Your registration has been submitted. The admin will review and approve your account.
                     </p>
                   </div>
-                  <div className="p-4 rounded-lg border border-border bg-accent text-sm text-muted-foreground">
-                    Please check back later or contact your school administrator.
-                  </div>
-                  <Button
-                    variant="system-ghost"
-                    className="w-full"
+                  <button
                     onClick={() => { setView("login"); setError(""); setSuccess(""); }}
+                    className="text-sm text-primary hover:underline"
                   >
                     Back to Login
-                  </Button>
+                  </button>
                 </motion.div>
               )}
 
-              {/* LOGIN VIEW */}
+              {/* LOGIN */}
               {view === "login" && (
-                <motion.div
-                  key="login"
-                  variants={formVariants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                  className="space-y-6"
-                >
-                  <InteractiveCard className="p-6 rounded-xl border border-border bg-card/80 backdrop-blur-lg">
-                    <div className="flex items-center gap-3 mb-6">
-                      <Lock className="w-5 h-5 text-primary" />
-                      <div>
-                        <h1 className="font-display text-xl font-bold text-foreground">System Login</h1>
-                        <p className="text-xs text-muted-foreground">Authenticate to access your console</p>
+                <motion.div key="login" variants={formVariants} initial="hidden" animate="visible" exit="exit" className="space-y-6">
+                  <div>
+                    <h1 className="text-2xl font-bold text-foreground mb-1">Sign in</h1>
+                    <p className="text-sm text-muted-foreground">Enter your credentials to access the system</p>
+                  </div>
+
+                  <form onSubmit={handleLogin} className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Email</label>
+                      <Input type="email" placeholder="you@school.gov.in" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Password</label>
+                      <div className="relative">
+                        <Input
+                          type={showPassword ? "text" : "password"} placeholder="Enter password"
+                          value={password} onChange={(e) => setPassword(e.target.value)} required className="pr-10"
+                        />
+                        <button type="button" onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
                       </div>
                     </div>
 
-                    <form onSubmit={handleLogin} className="space-y-4">
-                      <div className="space-y-2">
-                        <Label className="text-xs text-muted-foreground uppercase tracking-wide">Email Address</Label>
-                        <div className="relative">
-                          <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                          <Input
-                            type="email" placeholder="user@school.gov.in"
-                            className="pl-10" value={email} onChange={(e) => setEmail(e.target.value)} required
-                          />
-                        </div>
-                      </div>
+                    <AnimatePresence mode="wait">
+                      {error && (
+                        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                          className="flex items-center gap-2 p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+                          <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
+                        </motion.div>
+                      )}
+                      {success && (
+                        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                          className="flex items-center gap-2 p-3 rounded-xl bg-primary/10 border border-primary/20 text-primary text-sm">
+                          <CheckCircle className="w-4 h-4 flex-shrink-0" /> {success}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
 
-                      <div className="space-y-2">
-                        <Label className="text-xs text-muted-foreground uppercase tracking-wide">Password</Label>
-                        <div className="relative">
-                          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                          <Input
-                            type={showPassword ? "text" : "password"} placeholder="Enter password"
-                            className="pl-10 pr-10" value={password} onChange={(e) => setPassword(e.target.value)} required
-                          />
-                          <button type="button" onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        </div>
-                      </div>
-
-                      <AnimatePresence mode="wait">
-                        {error && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                            className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm"
-                          >
-                            <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
-                          </motion.div>
-                        )}
-                        {success && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                            className="flex items-center gap-2 p-3 rounded-lg bg-primary/10 border border-primary/30 text-primary text-sm"
-                          >
-                            <CheckCircle className="w-4 h-4 flex-shrink-0" /> {success}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      <Button type="submit" variant="system" className="w-full" size="lg" disabled={isLoading}>
-                        {isLoading ? (
-                          <span className="flex items-center gap-2">
-                            <motion.div
-                              className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full"
-                              animate={{ rotate: 360 }}
-                              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                            />
-                            Authenticating...
-                          </span>
-                        ) : "Access System"}
-                      </Button>
-                    </form>
-                  </InteractiveCard>
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="w-full bg-foreground text-background font-semibold py-3 rounded-xl text-sm hover:bg-foreground/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                      {isLoading ? "Authenticating..." : "Sign in"}
+                    </button>
+                  </form>
 
                   <div className="text-center">
                     <p className="text-sm text-muted-foreground">
                       New teacher?{" "}
-                      <button
-                        onClick={() => { setView("register"); setError(""); setSuccess(""); }}
-                        className="text-primary hover:underline font-medium"
-                      >
-                        Register for access
+                      <button onClick={() => { setView("register"); setError(""); setSuccess(""); }} className="text-primary hover:underline font-medium">
+                        Register
                       </button>
                     </p>
                   </div>
                 </motion.div>
               )}
 
-              {/* REGISTER VIEW */}
+              {/* REGISTER */}
               {view === "register" && (
-                <motion.div
-                  key="register"
-                  variants={formVariants}
-                  initial="hidden"
-                  animate="visible"
-                  exit="exit"
-                  className="space-y-6"
-                >
-                  <InteractiveCard className="p-6 rounded-xl border border-border bg-card/80 backdrop-blur-lg">
-                    <div className="flex items-center gap-3 mb-6">
-                      <UserPlus className="w-5 h-5 text-primary" />
-                      <div>
-                        <h1 className="font-display text-xl font-bold text-foreground">Teacher Registration</h1>
-                        <p className="text-xs text-muted-foreground">Admin approval required before login</p>
+                <motion.div key="register" variants={formVariants} initial="hidden" animate="visible" exit="exit" className="space-y-6">
+                  <div>
+                    <h1 className="text-2xl font-bold text-foreground mb-1">Register</h1>
+                    <p className="text-sm text-muted-foreground">Admin approval required before access</p>
+                  </div>
+
+                  <form onSubmit={handleRegister} className="space-y-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Full Name *</label>
+                      <Input placeholder="Your name" value={regName} onChange={(e) => setRegName(e.target.value)} required />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Email *</label>
+                      <Input type="email" placeholder="you@school.gov.in" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} required />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Password *</label>
+                      <div className="relative">
+                        <Input type={showPassword ? "text" : "password"} placeholder="Choose a password" value={regPassword} onChange={(e) => setRegPassword(e.target.value)} required className="pr-10" />
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
                       </div>
                     </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">School</label>
+                      <Input placeholder="School name" value={regSchool} onChange={(e) => setRegSchool(e.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Phone</label>
+                      <Input placeholder="+91 XXXXX XXXXX" value={regPhone} onChange={(e) => setRegPhone(e.target.value)} />
+                    </div>
 
-                    <form onSubmit={handleRegister} className="space-y-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground uppercase tracking-wide">Full Name *</Label>
-                        <Input placeholder="Your full name" value={regName} onChange={(e) => setRegName(e.target.value)} required />
+                    {error && (
+                      <div className="flex items-center gap-2 p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
                       </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground uppercase tracking-wide">Email Address *</Label>
-                        <Input type="email" placeholder="you@school.gov.in" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} required />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground uppercase tracking-wide">Password *</Label>
-                        <div className="relative">
-                          <Input
-                            type={showPassword ? "text" : "password"} placeholder="Choose a password"
-                            value={regPassword} onChange={(e) => setRegPassword(e.target.value)} required className="pr-10"
-                          />
-                          <button type="button" onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground uppercase tracking-wide">School Name</Label>
-                        <Input placeholder="Your school name" value={regSchool} onChange={(e) => setRegSchool(e.target.value)} />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground uppercase tracking-wide">Phone Number</Label>
-                        <Input placeholder="+91 XXXXX XXXXX" value={regPhone} onChange={(e) => setRegPhone(e.target.value)} />
-                      </div>
+                    )}
 
-                      <AnimatePresence mode="wait">
-                        {error && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                            className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm"
-                          >
-                            <AlertCircle className="w-4 h-4 flex-shrink-0" /> {error}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      <Button type="submit" variant="system" className="w-full mt-2" size="lg" disabled={isLoading}>
-                        {isLoading ? (
-                          <span className="flex items-center gap-2">
-                            <motion.div
-                              className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full"
-                              animate={{ rotate: 360 }}
-                              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                            />
-                            Submitting...
-                          </span>
-                        ) : "Submit Registration"}
-                      </Button>
-                    </form>
-                  </InteractiveCard>
+                    <button type="submit" disabled={isLoading}
+                      className="w-full bg-foreground text-background font-semibold py-3 rounded-xl text-sm hover:bg-foreground/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 mt-2">
+                      {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                      {isLoading ? "Submitting..." : "Submit Registration"}
+                    </button>
+                  </form>
 
                   <div className="text-center">
-                    <button
-                      onClick={() => { setView("login"); setError(""); setSuccess(""); }}
-                      className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mx-auto"
-                    >
+                    <button onClick={() => { setView("login"); setError(""); setSuccess(""); }} className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mx-auto">
                       <ArrowLeft className="w-3 h-3" /> Back to Login
                     </button>
                   </div>
                 </motion.div>
               )}
-
             </AnimatePresence>
           </div>
         </div>
 
-        <motion.footer
-          className="p-6 text-center relative z-10"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1 }}
-        >
-          <p className="text-xs text-muted-foreground">
-            Secure system access • Session encrypted
-          </p>
-        </motion.footer>
-      </motion.div>
+        <footer className="p-6 text-center">
+          <p className="text-xs text-muted-foreground/50">Encrypted session · Sahayak OS</p>
+        </footer>
+      </div>
     </div>
   );
 };
