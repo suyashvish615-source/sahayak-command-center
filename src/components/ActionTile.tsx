@@ -12,99 +12,55 @@ interface ActionTileProps {
 }
 
 const ActionTile = ({ icon, title, description, status = "idle", onClick, className }: ActionTileProps) => {
-  const statusColors = {
-    active: "border-primary/50 bg-primary/5",
-    warning: "border-yellow-500/30 bg-yellow-500/5",
-    critical: "border-red-500/30 bg-red-500/5",
-    idle: "border-panel-border bg-panel-elevated"
+  const borderColors = {
+    active: "border-primary/40 hover:border-primary/60",
+    warning: "border-system-warning/30 hover:border-system-warning/50",
+    critical: "border-system-critical/30 hover:border-system-critical/50",
+    idle: "border-border hover:border-primary/30"
+  };
+
+  const glowColors = {
+    active: "shadow-[0_0_40px_-12px_hsl(var(--primary)/0.3)]",
+    warning: "shadow-[0_0_40px_-12px_hsl(var(--system-warning)/0.3)]",
+    critical: "shadow-[0_0_40px_-12px_hsl(var(--system-critical)/0.3)]",
+    idle: ""
   };
 
   const iconColors = {
     active: "text-primary",
-    warning: "text-yellow-400",
-    critical: "text-red-400",
-    idle: "text-muted-foreground"
-  };
-
-  const glowColors = {
-    active: "0 0 40px -10px hsl(var(--primary) / 0.5)",
-    warning: "0 0 40px -10px hsl(45 93% 47% / 0.5)",
-    critical: "0 0 40px -10px hsl(0 72% 51% / 0.5)",
-    idle: "0 0 30px -10px hsl(var(--primary) / 0.3)"
+    warning: "text-system-warning",
+    critical: "text-system-critical",
+    idle: "text-muted-foreground group-hover:text-primary"
   };
 
   return (
     <motion.button
       onClick={onClick}
       className={cn(
-        "action-tile p-6 text-left w-full group relative overflow-hidden",
-        statusColors[status],
+        "relative overflow-hidden rounded-xl border bg-card p-6 text-left w-full group transition-all duration-300",
+        borderColors[status],
+        status !== "idle" && glowColors[status],
         className
       )}
-      whileHover={{ 
-        scale: 1.02,
-        boxShadow: glowColors[status],
-      }}
+      whileHover={{ y: -2 }}
       whileTap={{ scale: 0.98 }}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ type: "spring", stiffness: 200, damping: 20 }}
     >
-      {/* Animated background gradient */}
-      <motion.div 
-        className="absolute inset-0 bg-gradient-to-br from-primary/0 via-primary/5 to-transparent opacity-0 group-hover:opacity-100"
-        transition={{ duration: 0.3 }}
-      />
-      
-      {/* Pulse effect when active */}
-      {status !== "idle" && (
-        <motion.div
-          className="absolute inset-0 rounded-lg"
-          style={{
-            background: status === "active" 
-              ? "radial-gradient(circle at center, hsl(var(--primary) / 0.1) 0%, transparent 70%)"
-              : status === "warning"
-              ? "radial-gradient(circle at center, hsl(45 93% 47% / 0.1) 0%, transparent 70%)"
-              : "radial-gradient(circle at center, hsl(0 72% 51% / 0.1) 0%, transparent 70%)"
-          }}
-          animate={{ 
-            scale: [1, 1.2, 1],
-            opacity: [0.5, 0.8, 0.5]
-          }}
-          transition={{ duration: 2, repeat: Infinity }}
-        />
-      )}
-
-      <motion.div 
-        className={cn("mb-4 transition-colors relative z-10", iconColors[status])}
-        whileHover={{ rotate: [0, -5, 5, 0] }}
-        transition={{ duration: 0.4 }}
-      >
+      <div className={cn("mb-4 transition-colors duration-200", iconColors[status])}>
         {icon}
-      </motion.div>
-      
-      <h4 className="font-display font-semibold text-foreground mb-1.5 group-hover:text-primary transition-colors relative z-10">
-        {title}
-      </h4>
-      
-      <p className="text-sm text-muted-foreground leading-relaxed relative z-10">
-        {description}
-      </p>
+      </div>
+      <h4 className="font-semibold text-foreground text-sm mb-1.5 group-hover:text-primary transition-colors">{title}</h4>
+      <p className="text-xs text-muted-foreground leading-relaxed">{description}</p>
 
-      {/* Corner accent */}
-      <motion.div 
-        className="absolute top-0 right-0 w-16 h-16 pointer-events-none"
-        initial={{ opacity: 0 }}
-        whileHover={{ opacity: 1 }}
-      >
-        <div className={cn(
-          "absolute top-3 right-3 w-2 h-2 rounded-full",
-          status === "active" && "bg-primary",
-          status === "warning" && "bg-yellow-400",
-          status === "critical" && "bg-red-400",
-          status === "idle" && "bg-muted-foreground/50"
-        )} />
-      </motion.div>
+      {status !== "idle" && (
+        <div className="absolute top-4 right-4">
+          <span className={cn(
+            "w-2 h-2 rounded-full block",
+            status === "active" && "bg-primary",
+            status === "warning" && "bg-system-warning",
+            status === "critical" && "bg-system-critical",
+          )} />
+        </div>
+      )}
     </motion.button>
   );
 };
