@@ -19,8 +19,8 @@ const Landing = () => {
 
   const fadeUp = {
     hidden: { opacity: 0, y: 40 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: "easeOut" } },
-  };
+    visible: { opacity: 1, y: 0, transition: { duration: 0.8 } },
+  } as const;
 
   return (
     <div ref={containerRef} className="min-h-[200vh] bg-background overflow-x-hidden noise-bg">
