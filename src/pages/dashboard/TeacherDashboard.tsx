@@ -8,7 +8,7 @@ import {
   Timer, Send, Loader2, Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { externalSupabase } from "@/lib/supabaseExternal";
+import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { createSession, updateSession, createIntervention, createReflection, DBSession } from "@/lib/database";
 
